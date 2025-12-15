@@ -345,13 +345,3 @@ Prepare project for submission and interviews.
 
 ---
 
-## Why This Is a Flagship Project
-
-- Demonstrates **agentic planning**
-- Shows **evaluation-driven adaptation**
-- Uses **real-world constraints**
-- Avoids toy-chatbot patterns
-- Maps directly to production AI systems
-
-## Architecture
-
