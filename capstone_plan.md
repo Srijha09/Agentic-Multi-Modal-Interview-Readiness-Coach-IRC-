@@ -65,45 +65,7 @@ The system functions as a **stateful AI coach**, combining planning, evaluation,
 
 ## Architecture
 
-┌────────────────────────────────────────────┐
-│ React Frontend │
-│ • Intake & Upload │
-│ • Gap Report Dashboard │
-│ • Daily Tasks & Practice │
-│ • Progress & Mastery Charts │
-└───────────────┬────────────────────────────┘
-│
-▼
-┌────────────────────────────────────────────┐
-│ FastAPI Backend │
-│ │
-│ ┌──────────────────────────────────────┐ │
-│ │ LangGraph Agent System │ │
-│ │ │ │
-│ │ Intake Agent │ │
-│ │ Gap Analysis Agent │ │
-│ │ Planner Agent │ │
-│ │ Daily Coach Agent │ │
-│ │ Evaluation Agent │ │
-│ │ Adaptation Agent │ │
-│ └──────────────────────────────────────┘ │
-│ │
-│ Tools: Resume Parser, JD Parser, │
-│ Skill Extractor, Quiz Generator, │
-│ Evaluation Rubrics, Calendar Tool │
-└───────────────┬────────────────────────────┘
-│
-▼
-┌────────────────────────────────────────────┐
-│ Data Layer │
-│ • Users, Skills, Gaps │
-│ • Plans, Tasks, Practice Items │
-│ • Attempts, Evaluations, Mastery │
-│ • Calendar Events │
-└────────────────────────────────────────────┘
-
-yaml
-Copy code
+![System Architecture Overview](assets/architecture.jpg)
 
 ---
 
