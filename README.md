@@ -63,48 +63,8 @@ The system functions as a **stateful AI coach**, combining planning, evaluation,
 
 ---
 
-## Architecture
-
-┌────────────────────────────────────────────┐
-│ React Frontend │
-│ • Intake & Upload │
-│ • Gap Report Dashboard │
-│ • Daily Tasks & Practice │
-│ • Progress & Mastery Charts │
-└───────────────┬────────────────────────────┘
-│
-▼
-┌────────────────────────────────────────────┐
-│ FastAPI Backend │
-│ │
-│ ┌──────────────────────────────────────┐ │
-│ │ LangGraph Agent System │ │
-│ │ │ │
-│ │ Intake Agent │ │
-│ │ Gap Analysis Agent │ │
-│ │ Planner Agent │ │
-│ │ Daily Coach Agent │ │
-│ │ Evaluation Agent │ │
-│ │ Adaptation Agent │ │
-│ └──────────────────────────────────────┘ │
-│ │
-│ Tools: Resume Parser, JD Parser, │
-│ Skill Extractor, Quiz Generator, │
-│ Evaluation Rubrics, Calendar Tool │
-└───────────────┬────────────────────────────┘
-│
-▼
-┌────────────────────────────────────────────┐
-│ Data Layer │
-│ • Users, Skills, Gaps │
-│ • Plans, Tasks, Practice Items │
-│ • Attempts, Evaluations, Mastery │
-│ • Calendar Events │
-└────────────────────────────────────────────┘
-
----
-
 ### Architecture Diagram
+```mermaid
 flowchart TB
   %% ==== UI Layer ====
   subgraph UI["Web Frontend (React)"]
@@ -167,9 +127,11 @@ flowchart TB
 
   A2 -->|store embeddings| VS
 
+```
 
 ### Sequence Diagram: Resume + JD → Plan → Daily Practice → Adaptation Loop
 
+```mermaid
 sequenceDiagram
   autonumber
   participant User
@@ -227,8 +189,11 @@ sequenceDiagram
   API->>Cal: Generate ICS from latest plan
   Cal-->>API: ICS file
   API-->>UI: Download ICS
+```
 
 ### Use Case Diagram
+
+```mermaid
 flowchart LR
   %% Actors
   User((User))
@@ -266,10 +231,12 @@ flowchart LR
 
   Admin --> UC12
   Admin --> UC13
+```
 
 ### Data Flow Diagram
 #### DFD Level 0 (Context Diagram)
 
+```mermaid
 flowchart LR
   User((User)) -->|Resume/JD, preferences, answers| System["Interview Readiness Coach"]
   System -->|Gap report, plan, daily tasks, feedback, calendar| User
@@ -277,9 +244,12 @@ flowchart LR
   System -->|Read/Write| DB[(Database)]
   System -->|Store/Retrieve embeddings| VS[(Vector Store)]
   System -->|Store raw files| FS[(File Storage)]
+```
 
 
 #### DFD Level 1 (Main Processes + Stores)
+
+```mermaid
 flowchart TB
   %% External entity
   User((User))
@@ -346,8 +316,8 @@ flowchart TB
 
   %% Users store
   User -->|Auth/Login| D1
+```
 
-  
 ## Core Capabilities
 
 ### 1. Skill Extraction & Evidence Mapping
