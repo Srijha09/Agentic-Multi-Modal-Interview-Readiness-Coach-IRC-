@@ -1,12 +1,18 @@
-"""
-Database connection and session management.
-"""
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from app.core.config import settings
 
-# Create database engine
+
+# -------------------------
+# Declarative Base (ONE ONLY)
+# -------------------------
+class Base(DeclarativeBase):
+    pass
+
+
+# -------------------------
+# Engine
+# -------------------------
 if settings.DATABASE_URL.startswith("sqlite"):
     engine = create_engine(
         settings.DATABASE_URL,
@@ -19,11 +25,15 @@ else:
         echo=settings.DEBUG,
     )
 
-# Session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Base class for models
-Base = declarative_base()
+# -------------------------
+# Session
+# -------------------------
+SessionLocal = sessionmaker(
+    bind=engine,
+    autocommit=False,
+    autoflush=False,
+)
 
 
 def get_db():
@@ -35,6 +45,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
 
 
 
