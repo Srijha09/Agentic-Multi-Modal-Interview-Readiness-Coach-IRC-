@@ -31,7 +31,13 @@ from app.schemas.evaluation import (
 )
 from app.schemas.mastery import MasteryResponse, MasteryUpdate
 from app.schemas.calendar import CalendarEventCreate, CalendarEventResponse
-from app.schemas.document import DocumentCreate, DocumentResponse
+from app.schemas.document import (
+    DocumentCreate,
+    DocumentResponse,
+    DocumentSection,
+    DocumentChunk,
+    ParsedDocument,
+)
 
 __all__ = [
     # User
@@ -70,5 +76,8 @@ __all__ = [
     # Document
     "DocumentCreate",
     "DocumentResponse",
+    "DocumentSection",
+    "DocumentChunk",
+    "ParsedDocument",
 ]
 

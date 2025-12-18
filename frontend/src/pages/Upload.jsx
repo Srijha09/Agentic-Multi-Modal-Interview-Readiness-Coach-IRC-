@@ -6,6 +6,10 @@ function Upload() {
   const [jobDescription, setJobDescription] = useState('')
   const [uploading, setUploading] = useState(false)
   const [message, setMessage] = useState('')
+  const [uploadResult, setUploadResult] = useState(null)
+  
+  // For testing - use the user_id from create_test_user.py (typically 1)
+  const TEST_USER_ID = 1
 
   const handleResumeChange = (e) => {
     setResumeFile(e.target.files[0])
@@ -15,21 +19,60 @@ function Upload() {
     e.preventDefault()
     setUploading(true)
     setMessage('')
+    setUploadResult(null)
 
     try {
-      const formData = new FormData()
+      // Upload resume if provided
       if (resumeFile) {
+        const formData = new FormData()
         formData.append('file', resumeFile)
         formData.append('document_type', 'resume')
+        formData.append('user_id', TEST_USER_ID.toString())
+
+        const response = await axios.post('/api/v1/documents/upload', formData)
+        
+        setUploadResult({
+          type: 'resume',
+          data: response.data
+        })
+        setMessage(`✓ Resume uploaded successfully! Document ID: ${response.data.id}`)
       }
 
-      // TODO: Implement actual API call
-      // const response = await axios.post('/api/v1/documents/upload', formData)
-      
-      setMessage('Upload functionality will be implemented in Phase 2')
+      // Handle job description text
+      if (jobDescription.trim()) {
+        // Convert text to a Blob and upload as file
+        const blob = new Blob([jobDescription], { type: 'text/plain' })
+        const jdFile = new File([blob], 'job_description.txt', { type: 'text/plain' })
+        
+        const formData = new FormData()
+        formData.append('file', jdFile)
+        formData.append('document_type', 'job_description')
+        formData.append('user_id', TEST_USER_ID.toString())
+
+        const response = await axios.post('/api/v1/documents/upload', formData)
+        
+        setUploadResult(prev => ({
+          ...prev,
+          jd: response.data
+        }))
+        setMessage(prev => prev 
+          ? `${prev}\n✓ Job description uploaded! Document ID: ${response.data.id}`
+          : `✓ Job description uploaded! Document ID: ${response.data.id}`
+        )
+      }
+
+      if (!resumeFile && !jobDescription.trim()) {
+        setMessage('Please upload a resume or enter a job description.')
+      }
+
       setUploading(false)
     } catch (error) {
-      setMessage('Error uploading file. Please try again.')
+      console.error('Upload error:', error)
+      setMessage(
+        error.response?.data?.detail || 
+        error.message || 
+        'Error uploading file. Please try again.'
+      )
       setUploading(false)
     }
   }
@@ -79,8 +122,44 @@ function Upload() {
           </button>
 
           {message && (
-            <div className="mt-4 p-3 bg-blue-50 text-blue-700 rounded">
-              {message}
+            <div className={`mt-4 p-3 rounded ${
+              message.includes('Error') || message.includes('Please')
+                ? 'bg-red-50 text-red-700' 
+                : 'bg-green-50 text-green-700'
+            }`}>
+              {message.split('\n').map((line, i) => (
+                <div key={i}>{line}</div>
+              ))}
+            </div>
+          )}
+
+          {uploadResult && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-semibold mb-2 text-gray-900">Upload Results:</h3>
+              {uploadResult.data && (
+                <div className="mb-2">
+                  <p className="text-sm text-gray-700">
+                    <strong>Resume:</strong> Document ID {uploadResult.data.id}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Sections: {uploadResult.data.doc_metadata?.section_count || 0} | 
+                    Chunks: {uploadResult.data.doc_metadata?.chunk_count || 0} |
+                    Characters: {uploadResult.data.doc_metadata?.char_count || 0}
+                  </p>
+                </div>
+              )}
+              {uploadResult.jd && (
+                <div>
+                  <p className="text-sm text-gray-700">
+                    <strong>Job Description:</strong> Document ID {uploadResult.jd.id}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Sections: {uploadResult.jd.doc_metadata?.section_count || 0} | 
+                    Chunks: {uploadResult.jd.doc_metadata?.chunk_count || 0} |
+                    Characters: {uploadResult.jd.doc_metadata?.char_count || 0}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </form>
