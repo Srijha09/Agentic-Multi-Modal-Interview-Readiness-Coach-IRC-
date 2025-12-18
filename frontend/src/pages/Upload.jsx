@@ -11,6 +11,8 @@ function Upload() {
   const [message, setMessage] = useState('')
   const [uploadResult, setUploadResult] = useState(null)
   const [gapReport, setGapReport] = useState(null)
+  const [studyPlan, setStudyPlan] = useState(null)
+  const [generatingPlan, setGeneratingPlan] = useState(false)
   const progressIntervalRef = useRef(null)
   
   // For testing - use the user_id from create_test_user.py (typically 1)
@@ -160,6 +162,36 @@ function Upload() {
       })
       setAnalyzing(false)
       setAnalysisProgress(0)
+    }
+  }
+
+  const generateStudyPlan = async (weeks, hoursPerWeek) => {
+    setGeneratingPlan(true)
+    setMessage(prev => prev + `\n\n📅 Generating ${weeks}-week study plan...`)
+    
+    try {
+      console.log('Generating study plan:', { userId: TEST_USER_ID, weeks, hoursPerWeek })
+      
+      const response = await axios.post(
+        `/api/v1/plans/generate?user_id=${TEST_USER_ID}&weeks=${weeks}&hours_per_week=${hoursPerWeek}`
+      )
+      
+      console.log('Study plan response:', response.data)
+      
+      setStudyPlan(response.data)
+      setMessage(prev => {
+        const base = prev.split('\n\n')[0]
+        return `${base}\n\n✓ Study plan generated! ${weeks} weeks with ${hoursPerWeek}h/week.`
+      })
+    } catch (error) {
+      console.error('Plan generation error:', error)
+      const errorMsg = error.response?.data?.detail || error.message || 'Unknown error'
+      setMessage(prev => {
+        const base = prev.split('\n\n')[0]
+        return `${base}\n\n✗ Error generating plan: ${errorMsg}`
+      })
+    } finally {
+      setGeneratingPlan(false)
     }
   }
 
@@ -394,6 +426,158 @@ function Upload() {
                     )
                   })}
               </div>
+            </div>
+          )}
+
+          {gapReport && !studyPlan && !generatingPlan && (
+            <div className="mt-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+              <p className="text-sm text-purple-800 mb-3">
+                Skill gaps identified! Generate a personalized study plan to address them.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => generateStudyPlan(4, 10.0)}
+                  className="bg-purple-600 text-white px-6 py-2 rounded-md hover:bg-purple-700 font-semibold"
+                >
+                  📅 Generate 4-Week Study Plan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => generateStudyPlan(6, 10.0)}
+                  className="bg-purple-500 text-white px-6 py-2 rounded-md hover:bg-purple-600 font-semibold"
+                >
+                  📅 Generate 6-Week Study Plan
+                </button>
+              </div>
+            </div>
+          )}
+
+          {generatingPlan && (
+            <div className="mt-6 p-4 bg-purple-50 text-purple-700 rounded-lg border border-purple-200">
+              <p className="font-semibold">⏳ Generating personalized study plan...</p>
+              <p className="text-sm mt-2">Creating weekly themes and daily tasks based on your skill gaps...</p>
+            </div>
+          )}
+
+          {studyPlan && (
+            <div className="mt-6 p-6 bg-white rounded-lg shadow-lg">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-gray-900">Your Study Plan</h2>
+                <div className="text-sm text-gray-600">
+                  {studyPlan.weeks} weeks • {studyPlan.hours_per_week}h/week • {studyPlan.total_estimated_hours?.toFixed(1) || 0}h total
+                </div>
+              </div>
+
+              {/* Plan Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <p className="text-sm text-gray-600">Weeks</p>
+                  <p className="text-2xl font-bold text-blue-600">{studyPlan.weeks}</p>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <p className="text-sm text-gray-600">Total Hours</p>
+                  <p className="text-2xl font-bold text-green-600">{studyPlan.total_estimated_hours?.toFixed(1) || 0}</p>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <p className="text-sm text-gray-600">Completion</p>
+                  <p className="text-2xl font-bold text-purple-600">{studyPlan.completion_percentage?.toFixed(0) || 0}%</p>
+                </div>
+              </div>
+
+              {/* Focus Areas */}
+              {studyPlan.focus_areas && studyPlan.focus_areas.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Focus Areas</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {studyPlan.focus_areas.map((area, idx) => (
+                      <span key={idx} className="bg-primary-100 text-primary-800 px-3 py-1 rounded-full text-sm">
+                        {area}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Weeks */}
+              {studyPlan.weeks_data && studyPlan.weeks_data.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Weekly Breakdown</h3>
+                  {studyPlan.weeks_data.map((week) => (
+                    <div key={week.id} className="border-2 border-gray-200 rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h4 className="font-bold text-lg text-gray-900">
+                            Week {week.week_number}: {week.theme}
+                          </h4>
+                          {week.focus_skills && week.focus_skills.length > 0 && (
+                            <p className="text-sm text-gray-600 mt-1">
+                              Skills: {week.focus_skills.join(", ")}
+                            </p>
+                          )}
+                        </div>
+                        <p className="text-sm font-semibold text-gray-700">
+                          {week.estimated_hours}h
+                        </p>
+                      </div>
+
+                      {/* Days */}
+                      {week.days && week.days.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          {week.days.map((day) => (
+                            <div key={day.id} className="bg-gray-50 rounded p-3">
+                              <div className="flex justify-between items-center mb-2">
+                                <div>
+                                  <p className="font-semibold text-sm">
+                                    Day {day.day_number} {day.date && `(${new Date(day.date).toLocaleDateString()})`}
+                                  </p>
+                                  {day.theme && (
+                                    <p className="text-xs text-gray-600">{day.theme}</p>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-600">{day.estimated_hours}h</p>
+                              </div>
+
+                              {/* Tasks */}
+                              {day.tasks && day.tasks.length > 0 && (
+                                <div className="mt-2 space-y-1">
+                                  {day.tasks.map((task) => (
+                                    <div key={task.id} className="bg-white rounded p-2 text-xs">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                                          task.task_type === 'learn' ? 'bg-blue-100 text-blue-800' :
+                                          task.task_type === 'practice' ? 'bg-green-100 text-green-800' :
+                                          'bg-yellow-100 text-yellow-800'
+                                        }`}>
+                                          {task.task_type}
+                                        </span>
+                                        <span className="font-semibold">{task.title}</span>
+                                        <span className="text-gray-500 ml-auto">{task.estimated_minutes}min</span>
+                                      </div>
+                                      {task.description && (
+                                        <p className="text-gray-600 mt-1 ml-12">{task.description}</p>
+                                      )}
+                                      {task.skill_names && task.skill_names.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1 ml-12">
+                                          {task.skill_names.map((skill, idx) => (
+                                            <span key={idx} className="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded text-xs">
+                                              {skill}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </form>

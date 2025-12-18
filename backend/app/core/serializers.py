@@ -68,21 +68,23 @@ def serialize_gap(gap: Gap, include_relations: bool = True) -> Dict[str, Any]:
 
 def serialize_study_plan(plan: StudyPlan, include_relations: bool = True) -> Dict[str, Any]:
     """Serialize StudyPlan model to dict."""
+    from datetime import datetime
+    
     plan_dict = {
         "id": plan.id,
         "user_id": plan.user_id,
-        "interview_date": plan.interview_date.isoformat() if plan.interview_date else None,
+        "interview_date": plan.interview_date if plan.interview_date else None,
         "weeks": plan.weeks,
         "hours_per_week": plan.hours_per_week,
         "focus_areas": plan.focus_areas or [],
-        "created_at": plan.created_at.isoformat() if plan.created_at else None,
-        "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
+        "created_at": plan.created_at if plan.created_at else None,
+        "updated_at": plan.updated_at if plan.updated_at else None,
     }
     
     if include_relations:
         # Calculate totals
         total_hours = sum(week.estimated_hours for week in plan.weeks_data) if plan.weeks_data else 0.0
-        completed_tasks = sum(1 for task in plan.daily_tasks if task.completed) if plan.daily_tasks else 0
+        completed_tasks = sum(1 for task in plan.daily_tasks if task.status.value == "completed") if plan.daily_tasks else 0
         total_tasks = len(plan.daily_tasks) if plan.daily_tasks else 0
         completion_pct = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0
         
@@ -112,13 +114,22 @@ def serialize_week(week: Week, include_relations: bool = True) -> Dict[str, Any]
 
 def serialize_day(day: Day, include_relations: bool = True) -> Dict[str, Any]:
     """Serialize Day model to dict."""
+    from datetime import date as date_type
+    
+    # Handle date conversion - Day.date is DateTime, but schema expects date
+    day_date = day.date
+    if isinstance(day_date, datetime):
+        day_date = day_date.date()
+    elif day_date is None:
+        day_date = None
+    
     day_dict = {
         "id": day.id,
         "day_number": day.day_number,
-        "date": day.date.isoformat() if isinstance(day.date, date) else day.date.isoformat() if day.date else None,
+        "date": day_date if isinstance(day_date, date_type) else None,
         "theme": day.theme,
         "estimated_hours": day.estimated_hours,
-        "created_at": day.created_at.isoformat() if day.created_at else None,
+        "created_at": day.created_at if day.created_at else None,
     }
     
     if include_relations and day.tasks:
@@ -129,7 +140,23 @@ def serialize_day(day: Day, include_relations: bool = True) -> Dict[str, Any]:
 
 def serialize_task(task: DailyTask) -> Dict[str, Any]:
     """Serialize DailyTask model to dict."""
-    return TaskResponse.model_validate(task).model_dump()
+    # Handle None values before validation
+    task_data = {
+        "id": task.id,
+        "task_type": task.task_type.value if hasattr(task.task_type, 'value') else str(task.task_type),
+        "title": task.title,
+        "description": task.description,
+        "skill_names": task.skill_names if task.skill_names is not None else [],
+        "estimated_minutes": task.estimated_minutes,
+        "dependencies": task.dependencies if task.dependencies is not None else [],
+        "content": task.content if task.content is not None else {},
+        "status": task.status.value if hasattr(task.status, 'value') else str(task.status),
+        "completed_at": task.completed_at,
+        "actual_minutes": task.actual_minutes,
+        "created_at": task.created_at,
+    }
+    
+    return TaskResponse.model_validate(task_data).model_dump()
 
 
 def serialize_practice_item(item: PracticeItem) -> Dict[str, Any]:
