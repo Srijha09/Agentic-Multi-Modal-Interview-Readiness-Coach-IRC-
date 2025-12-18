@@ -57,7 +57,7 @@ class SkillEvidenceBase(BaseModel):
     """Base skill evidence schema."""
     skill_id: int
     document_id: int
-    evidence_text: str = Field(..., min_length=10)
+    evidence_text: str = Field(..., min_length=1)  # Allow shorter evidence (skill names are valid)
     section_name: Optional[str] = None  # e.g., "Experience", "Projects"
     confidence_score: float = Field(..., ge=0.0, le=1.0)
     start_char: Optional[int] = None  # Character position in document

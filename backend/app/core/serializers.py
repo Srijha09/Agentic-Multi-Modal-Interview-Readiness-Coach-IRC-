@@ -37,6 +37,11 @@ def serialize_skill_evidence(evidence: SkillEvidence) -> Dict[str, Any]:
     return SkillEvidenceResponse.model_validate(evidence).model_dump()
 
 
+def skill_evidence_to_response(evidence: SkillEvidence) -> SkillEvidenceResponse:
+    """Convert SkillEvidence model to SkillEvidenceResponse schema."""
+    return SkillEvidenceResponse.model_validate(evidence)
+
+
 def serialize_gap(gap: Gap, include_relations: bool = True) -> Dict[str, Any]:
     """Serialize Gap model to dict."""
     gap_dict = {
