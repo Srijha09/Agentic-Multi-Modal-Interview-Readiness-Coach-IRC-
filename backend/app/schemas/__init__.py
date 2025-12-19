@@ -38,6 +38,13 @@ from app.schemas.document import (
     DocumentChunk,
     ParsedDocument,
 )
+from app.schemas.coach import (
+    DailyBriefingResponse,
+    TaskUpdateRequest,
+    TaskRescheduleRequest,
+    TaskRescheduleResponse,
+    CarryOverSummary,
+)
 
 __all__ = [
     # User
@@ -79,5 +86,11 @@ __all__ = [
     "DocumentSection",
     "DocumentChunk",
     "ParsedDocument",
+    # Coach
+    "DailyBriefingResponse",
+    "TaskUpdateRequest",
+    "TaskRescheduleRequest",
+    "TaskRescheduleResponse",
+    "CarryOverSummary",
 ]
 

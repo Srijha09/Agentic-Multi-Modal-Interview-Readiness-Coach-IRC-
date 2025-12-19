@@ -82,15 +82,21 @@ def serialize_study_plan(plan: StudyPlan, include_relations: bool = True) -> Dic
     }
     
     if include_relations:
-        # Calculate totals
-        total_hours = sum(week.estimated_hours for week in plan.weeks_data) if plan.weeks_data else 0.0
-        completed_tasks = sum(1 for task in plan.daily_tasks if task.status.value == "completed") if plan.daily_tasks else 0
+        # Ensure weeks are loaded and ordered by week_number
+        weeks_list = []
+        if hasattr(plan, 'weeks_data') and plan.weeks_data:
+            weeks_list = sorted(plan.weeks_data, key=lambda w: w.week_number)
+        
+        # OPTIMIZATION: Calculate totals efficiently
+        total_hours = sum(week.estimated_hours for week in weeks_list) if weeks_list else 0.0
+        # Use generator expression for memory efficiency
+        completed_tasks = sum(1 for task in (plan.daily_tasks or []) if task.status.value == "completed")
         total_tasks = len(plan.daily_tasks) if plan.daily_tasks else 0
         completion_pct = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0
         
         plan_dict["total_estimated_hours"] = total_hours
         plan_dict["completion_percentage"] = completion_pct
-        plan_dict["weeks_data"] = [serialize_week(week) for week in plan.weeks_data] if plan.weeks_data else []
+        plan_dict["weeks_data"] = [serialize_week(week) for week in weeks_list]
     
     return plan_dict
 

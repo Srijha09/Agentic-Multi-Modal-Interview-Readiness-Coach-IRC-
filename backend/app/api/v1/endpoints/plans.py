@@ -5,10 +5,10 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
 from datetime import datetime
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db.database import get_db
-from app.db.models import User, Gap, StudyPlan
+from app.db.models import User, Gap, StudyPlan, Week
 from app.schemas.plan import StudyPlanResponse, StudyPlanCreate
 from app.services.planner import StudyPlanner
 from app.core.serializers import serialize_study_plan
@@ -73,9 +73,16 @@ async def generate_plan(
 @router.get("/{plan_id}", response_model=StudyPlanResponse)
 async def get_plan(plan_id: int, db: Session = Depends(get_db)):
     """Get study plan by ID."""
-    plan = db.query(StudyPlan).filter(StudyPlan.id == plan_id).first()
+    plan = db.query(StudyPlan).options(
+        joinedload(StudyPlan.weeks_data).joinedload(Week.days)
+    ).filter(StudyPlan.id == plan_id).first()
+    
     if not plan:
         raise HTTPException(status_code=404, detail="Study plan not found")
+    
+    # Ensure weeks are ordered by week_number
+    if plan.weeks_data:
+        plan.weeks_data = sorted(plan.weeks_data, key=lambda w: w.week_number)
     
     plan_dict = serialize_study_plan(plan, include_relations=True)
     return StudyPlanResponse.model_validate(plan_dict)
@@ -84,7 +91,9 @@ async def get_plan(plan_id: int, db: Session = Depends(get_db)):
 @router.get("/user/{user_id}/latest")
 async def get_latest_plan(user_id: int, db: Session = Depends(get_db)):
     """Get the latest study plan for a user."""
-    plan = db.query(StudyPlan).filter(
+    plan = db.query(StudyPlan).options(
+        joinedload(StudyPlan.weeks_data).joinedload(Week.days)
+    ).filter(
         StudyPlan.user_id == user_id
     ).order_by(StudyPlan.created_at.desc()).first()
     
@@ -93,6 +102,10 @@ async def get_latest_plan(user_id: int, db: Session = Depends(get_db)):
             status_code=404,
             detail=f"No study plan found for user {user_id}. Generate one first."
         )
+    
+    # Ensure weeks are ordered by week_number
+    if plan.weeks_data:
+        plan.weeks_data = sorted(plan.weeks_data, key=lambda w: w.week_number)
     
     plan_dict = serialize_study_plan(plan, include_relations=True)
     return StudyPlanResponse.model_validate(plan_dict)

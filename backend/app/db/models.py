@@ -95,6 +95,11 @@ class Document(Base):
     # Relationships
     user = relationship("User", back_populates="documents")
     skill_evidence = relationship("SkillEvidence", back_populates="document", cascade="all, delete-orphan")
+    
+    # Indexes for performance optimization
+    __table_args__ = (
+        Index("idx_document_user_type", "user_id", "document_type"),
+    )
 
 
 class Skill(Base):
@@ -255,6 +260,13 @@ class DailyTask(Base):
     practice_attempts = relationship("PracticeAttempt", back_populates="task")
     practice_items = relationship("PracticeItem", back_populates="task")
     calendar_events = relationship("CalendarEvent", back_populates="task")
+    
+    # Indexes for performance optimization
+    __table_args__ = (
+        Index("idx_task_study_plan_date", "study_plan_id", "task_date"),
+        Index("idx_task_study_plan_status", "study_plan_id", "status"),
+        Index("idx_task_date_status", "task_date", "status"),
+    )
 
 
 class PracticeItem(Base):

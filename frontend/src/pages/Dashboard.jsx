@@ -1,15 +1,29 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
 import { Link } from 'react-router-dom'
 
 function Dashboard() {
+  // ALL HOOKS MUST BE AT THE TOP - before any conditional returns
   const [loading, setLoading] = useState(true)
   const [studyPlan, setStudyPlan] = useState(null)
   const [todayTasks, setTodayTasks] = useState([])
   const [error, setError] = useState(null)
+  const [expandedTasks, setExpandedTasks] = useState(new Set())
+  const [expandedWeek, setExpandedWeek] = useState(null)
   
   // For testing - use the user_id from create_test_user.py (typically 1)
   const TEST_USER_ID = 1
+
+  // OPTIMIZATION: Memoize expensive calculations - MUST be before any conditional returns
+  const weeksRemaining = useMemo(() => {
+    return studyPlan 
+      ? Math.max(0, studyPlan.weeks - (studyPlan.weeks_data?.length || 0))
+      : null
+  }, [studyPlan])
+  
+  const completedToday = useMemo(() => {
+    return todayTasks.filter(t => t.status === 'completed').length
+  }, [todayTasks])
 
   useEffect(() => {
     fetchDashboardData()
@@ -25,35 +39,44 @@ function Dashboard() {
         const planResponse = await axios.get(`/api/v1/plans/user/${TEST_USER_ID}/latest`)
         setStudyPlan(planResponse.data)
         
-        // Calculate today's tasks
+        // OPTIMIZATION: Calculate today's tasks more efficiently
         if (planResponse.data.weeks_data) {
           const today = new Date()
           today.setHours(0, 0, 0, 0)
+          const todayTime = today.getTime()
           
-          const allTasks = []
-          planResponse.data.weeks_data.forEach(week => {
-            week.days?.forEach(day => {
-              if (day.tasks) {
-                day.tasks.forEach(task => {
-                  if (task.task_date) {
-                    const taskDate = new Date(task.task_date)
-                    taskDate.setHours(0, 0, 0, 0)
-                    if (taskDate.getTime() === today.getTime()) {
-                      allTasks.push({ ...task, day: day })
-                    }
-                  }
-                })
-              }
-            })
-          })
-          
-          setTodayTasks(allTasks)
+          // Flatten and filter in a single pass
+          try {
+            const allTasks = planResponse.data.weeks_data
+              .flatMap(week => week.days || [])
+              .flatMap(day => (day.tasks || []).map(task => ({ ...task, day })))
+              .filter(task => {
+                if (!task.task_date) return false
+                try {
+                  const taskDate = new Date(task.task_date)
+                  taskDate.setHours(0, 0, 0, 0)
+                  return taskDate.getTime() === todayTime
+                } catch (e) {
+                  console.warn('Invalid task_date:', task.task_date, e)
+                  return false
+                }
+              })
+            
+            setTodayTasks(allTasks)
+          } catch (taskError) {
+            console.error('Error processing tasks:', taskError)
+            setTodayTasks([])
+          }
         }
       } catch (planError) {
         if (planError.response?.status !== 404) {
           console.error('Error fetching study plan:', planError)
+          setError(planError.response?.data?.detail || planError.message || 'Failed to load study plan')
+        } else {
+          // 404 is OK - no plan exists yet
+          setStudyPlan(null)
+          setTodayTasks([])
         }
-        // 404 is OK - no plan exists yet
       }
     } catch (err) {
       console.error('Error fetching dashboard data:', err)
@@ -63,6 +86,10 @@ function Dashboard() {
     }
   }
 
+  // Helper functions - can be after hooks but before conditional returns
+  const totalToday = todayTasks.length
+
+  // Conditional returns - AFTER all hooks
   if (loading) {
     return (
       <div className="px-4 py-8">
@@ -71,18 +98,48 @@ function Dashboard() {
     )
   }
 
-  // Calculate stats
-  const weeksRemaining = studyPlan 
-    ? Math.max(0, studyPlan.weeks - (studyPlan.weeks_data?.length || 0))
-    : null
-  
-  const completedToday = todayTasks.filter(t => t.status === 'completed').length
-  const totalToday = todayTasks.length
+  if (error) {
+    return (
+      <div className="px-4 py-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <p className="text-red-800">Error: {error}</p>
+          <button
+            onClick={fetchDashboardData}
+            className="mt-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const toggleTaskExpansion = (taskId) => {
+    const newExpanded = new Set(expandedTasks)
+    if (newExpanded.has(taskId)) {
+      newExpanded.delete(taskId)
+    } else {
+      newExpanded.add(taskId)
+    }
+    setExpandedTasks(newExpanded)
+  }
+
+  const toggleWeekExpansion = (weekId) => {
+    setExpandedWeek(expandedWeek === weekId ? null : weekId)
+  }
 
   return (
     <div className="px-4 py-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Dashboard</h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <Link
+            to="/coach"
+            className="inline-block bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700"
+          >
+            View Daily Coach
+          </Link>
+        </div>
         
         {!studyPlan && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
@@ -142,46 +199,138 @@ function Dashboard() {
               <div className="bg-white p-6 rounded-lg shadow mb-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-4">Today's Tasks</h2>
                 <div className="space-y-3">
-                  {todayTasks.map((task) => (
-                    <div key={task.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                            task.task_type === 'learn' ? 'bg-blue-100 text-blue-800' :
-                            task.task_type === 'practice' ? 'bg-green-100 text-green-800' :
-                            'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {task.task_type}
-                          </span>
-                          <div>
-                            <p className="font-semibold text-gray-900">{task.title}</p>
-                            {task.description && (
-                              <p className="text-sm text-gray-600 mt-1">{task.description}</p>
-                            )}
-                            {task.skill_names && task.skill_names.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {task.skill_names.map((skill, idx) => (
-                                  <span key={idx} className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs">
-                                    {skill}
-                                  </span>
-                                ))}
+                  {todayTasks.map((task) => {
+                    const isExpanded = expandedTasks.has(task.id)
+                    const content = task.content || {}
+                    const studyMaterials = content.study_materials || []
+                    const resources = content.resources || []
+                    const keyConcepts = content.key_concepts || []
+                    const practiceExercises = content.practice_exercises || []
+                    
+                    return (
+                      <div key={task.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => toggleTaskExpansion(task.id)}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 flex-1">
+                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                              task.task_type === 'learn' ? 'bg-blue-100 text-blue-800' :
+                              task.task_type === 'practice' ? 'bg-green-100 text-green-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {task.task_type}
+                            </span>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold text-gray-900">{task.title}</p>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    toggleTaskExpansion(task.id)
+                                  }}
+                                  className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                                >
+                                  {isExpanded ? '▼ Hide Materials' : '▶ View Study Materials'}
+                                </button>
                               </div>
-                            )}
+                              {task.description && (
+                                <p className="text-sm text-gray-600 mt-1">{task.description}</p>
+                              )}
+                              {task.skill_names && task.skill_names.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {task.skill_names.map((skill, idx) => (
+                                    <span key={idx} className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs">
+                                      {skill}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right ml-4">
+                            <p className="text-sm font-semibold text-gray-700">{task.estimated_minutes}min</p>
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              task.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              task.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {task.status}
+                            </span>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold text-gray-700">{task.estimated_minutes}min</p>
-                          <span className={`text-xs px-2 py-1 rounded ${
-                            task.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            task.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {task.status}
-                          </span>
-                        </div>
+                        
+                        {/* Expanded Study Materials */}
+                        {isExpanded && (
+                          <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200" onClick={(e) => e.stopPropagation()}>
+                            {/* Study Materials */}
+                            {studyMaterials.length > 0 && (
+                              <div className="mb-4">
+                                <h4 className="font-semibold text-gray-900 mb-2 flex items-center">
+                                  <span className="mr-2">📚</span> What to Study
+                                </h4>
+                                <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                                  {studyMaterials.map((material, idx) => (
+                                    <li key={idx}>{material}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Key Concepts */}
+                            {keyConcepts.length > 0 && (
+                              <div className="mb-4">
+                                <h4 className="font-semibold text-gray-900 mb-2 flex items-center">
+                                  <span className="mr-2">💡</span> Key Concepts
+                                </h4>
+                                <div className="flex flex-wrap gap-2">
+                                  {keyConcepts.map((concept, idx) => (
+                                    <span key={idx} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
+                                      {concept}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Resources/Links */}
+                            {resources.length > 0 && (
+                              <div className="mb-4">
+                                <h4 className="font-semibold text-gray-900 mb-2 flex items-center">
+                                  <span className="mr-2">🔗</span> Resources & Links
+                                </h4>
+                                <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                                  {resources.map((resource, idx) => (
+                                    <li key={idx}>
+                                      <a href={resource} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">
+                                        {resource}
+                                      </a>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Practice Exercises (for practice tasks) */}
+                            {practiceExercises.length > 0 && task.task_type === 'practice' && (
+                              <div className="mb-4">
+                                <h4 className="font-semibold text-gray-900 mb-2 flex items-center">
+                                  <span className="mr-2">📝</span> Practice Exercises
+                                </h4>
+                                <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                                  {practiceExercises.map((exercise, idx) => (
+                                    <li key={idx}>{exercise}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Message if no additional content */}
+                            {studyMaterials.length === 0 && resources.length === 0 && keyConcepts.length === 0 && practiceExercises.length === 0 && (
+                              <p className="text-sm text-gray-500 italic">No additional study materials provided for this task.</p>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -208,18 +357,34 @@ function Dashboard() {
                   <h3 className="text-sm font-semibold text-gray-700 mb-3">Weekly Progress</h3>
                   <div className="space-y-2">
                     {studyPlan.weeks_data.map((week) => {
+                      // OPTIMIZATION: Calculate week stats efficiently
                       const weekTasks = week.days?.flatMap(d => d.tasks || []) || []
                       const completedWeekTasks = weekTasks.filter(t => t.status === 'completed').length
                       const totalWeekTasks = weekTasks.length
                       const weekProgress = totalWeekTasks > 0 ? (completedWeekTasks / totalWeekTasks) * 100 : 0
+                      const isWeekExpanded = expandedWeek === week.id
                       
                       return (
                         <div key={week.id} className="border border-gray-200 rounded-lg p-3">
-                          <div className="flex justify-between items-center mb-2">
-                            <div>
-                              <p className="font-semibold text-gray-900">
-                                Week {week.week_number}: {week.theme}
-                              </p>
+                          <div 
+                            className="flex justify-between items-center mb-2 cursor-pointer"
+                            onClick={() => toggleWeekExpansion(week.id)}
+                          >
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold text-gray-900">
+                                  Week {week.week_number}: {week.theme}
+                                </p>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    toggleWeekExpansion(week.id)
+                                  }}
+                                  className="text-primary-600 hover:text-primary-700 text-xs font-medium"
+                                >
+                                  {isWeekExpanded ? '▼ Hide Tasks' : '▶ View Tasks'}
+                                </button>
+                              </div>
                               <p className="text-xs text-gray-600 mt-1">
                                 {week.estimated_hours}h • {completedWeekTasks}/{totalWeekTasks} tasks
                               </p>
@@ -228,12 +393,144 @@ function Dashboard() {
                               <p className="text-sm font-semibold text-gray-700">{weekProgress.toFixed(0)}%</p>
                             </div>
                           </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
                             <div
                               className="bg-primary-600 h-2 rounded-full transition-all"
                               style={{ width: `${weekProgress}%` }}
                             ></div>
                           </div>
+                          
+                          {/* Expanded Week Tasks */}
+                          {isWeekExpanded && (
+                            <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
+                              {week.days?.map((day) => (
+                                day.tasks?.map((task) => {
+                                  const isTaskExpanded = expandedTasks.has(task.id)
+                                  const content = task.content || {}
+                                  const studyMaterials = content.study_materials || []
+                                  const resources = content.resources || []
+                                  const keyConcepts = content.key_concepts || []
+                                  const practiceExercises = content.practice_exercises || []
+                                  
+                                  return (
+                                    <div 
+                                      key={task.id} 
+                                      className="bg-gray-50 rounded-lg p-3 border border-gray-200 hover:shadow-sm transition-shadow cursor-pointer"
+                                      onClick={() => toggleTaskExpansion(task.id)}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 flex-1">
+                                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                                            task.task_type === 'learn' ? 'bg-blue-100 text-blue-800' :
+                                            task.task_type === 'practice' ? 'bg-green-100 text-green-800' :
+                                            'bg-yellow-100 text-yellow-800'
+                                          }`}>
+                                            {task.task_type}
+                                          </span>
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                              <p className="font-medium text-gray-900 text-sm">{task.title}</p>
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
+                                                  toggleTaskExpansion(task.id)
+                                                }}
+                                                className="text-primary-600 hover:text-primary-700 text-xs font-medium"
+                                              >
+                                                {isTaskExpanded ? '▼' : '▶'}
+                                              </button>
+                                            </div>
+                                            {task.skill_names && task.skill_names.length > 0 && (
+                                              <div className="flex flex-wrap gap-1 mt-1">
+                                                {task.skill_names.map((skill, idx) => (
+                                                  <span key={idx} className="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded text-xs">
+                                                    {skill}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="text-right ml-2">
+                                          <p className="text-xs font-semibold text-gray-700">{task.estimated_minutes}min</p>
+                                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                            task.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                            task.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
+                                            'bg-gray-100 text-gray-800'
+                                          }`}>
+                                            {task.status}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Expanded Study Materials */}
+                                      {isTaskExpanded && (
+                                        <div className="mt-3 p-3 bg-white rounded border border-gray-200" onClick={(e) => e.stopPropagation()}>
+                                          {studyMaterials.length > 0 && (
+                                            <div className="mb-3">
+                                              <h5 className="font-semibold text-gray-900 mb-1 text-xs flex items-center">
+                                                <span className="mr-1">📚</span> Study Materials
+                                              </h5>
+                                              <ul className="list-disc list-inside space-y-0.5 text-xs text-gray-700 ml-2">
+                                                {studyMaterials.map((material, idx) => (
+                                                  <li key={idx}>{material}</li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          )}
+                                          
+                                          {keyConcepts.length > 0 && (
+                                            <div className="mb-3">
+                                              <h5 className="font-semibold text-gray-900 mb-1 text-xs flex items-center">
+                                                <span className="mr-1">💡</span> Key Concepts
+                                              </h5>
+                                              <div className="flex flex-wrap gap-1 ml-2">
+                                                {keyConcepts.map((concept, idx) => (
+                                                  <span key={idx} className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-xs">
+                                                    {concept}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                          
+                                          {resources.length > 0 && (
+                                            <div className="mb-3">
+                                              <h5 className="font-semibold text-gray-900 mb-1 text-xs flex items-center">
+                                                <span className="mr-1">🔗</span> Resources
+                                              </h5>
+                                              <ul className="list-disc list-inside space-y-0.5 text-xs text-gray-700 ml-2">
+                                                {resources.map((resource, idx) => (
+                                                  <li key={idx}>
+                                                    <a href={resource} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">
+                                                      {resource}
+                                                    </a>
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          )}
+                                          
+                                          {practiceExercises.length > 0 && task.task_type === 'practice' && (
+                                            <div>
+                                              <h5 className="font-semibold text-gray-900 mb-1 text-xs flex items-center">
+                                                <span className="mr-1">📝</span> Practice Exercises
+                                              </h5>
+                                              <ul className="list-disc list-inside space-y-0.5 text-xs text-gray-700 ml-2">
+                                                {practiceExercises.map((exercise, idx) => (
+                                                  <li key={idx}>{exercise}</li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )
                     })}

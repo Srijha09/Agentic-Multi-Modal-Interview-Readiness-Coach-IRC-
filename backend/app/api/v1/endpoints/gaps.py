@@ -166,15 +166,32 @@ async def analyze_gaps(
     ).all()
     
     # Build response
+    # OPTIMIZATION: Batch load all evidence in one query instead of N+1 queries
     gap_responses = []
-    for gap in all_gaps:
-        # Get evidence for this gap
-        evidence_list = db.query(SkillEvidence).filter(
-            SkillEvidence.skill_id == gap.skill_id,
-            SkillEvidence.document_id == resume_doc.id
+    if resume_doc and all_gaps:
+        # Load all evidence for all gaps in a single query
+        skill_ids = [gap.skill_id for gap in all_gaps]
+        all_evidence = db.query(SkillEvidence).filter(
+            SkillEvidence.document_id == resume_doc.id,
+            SkillEvidence.skill_id.in_(skill_ids)
         ).all()
         
+        # Group evidence by skill_id for O(1) lookup
+        evidence_by_skill = {}
+        for ev in all_evidence:
+            if ev.skill_id not in evidence_by_skill:
+                evidence_by_skill[ev.skill_id] = []
+            evidence_by_skill[ev.skill_id].append(ev)
+    else:
+        evidence_by_skill = {}
+    
+    # Build gap responses with pre-loaded evidence
+    for gap in all_gaps:
         gap_response = GapResponse.model_validate(gap)
+        
+        # Get evidence from pre-loaded dictionary
+        evidence_list = evidence_by_skill.get(gap.skill_id, [])
+        
         # Filter and validate evidence before converting
         valid_evidence = []
         for ev in evidence_list:
@@ -230,30 +247,42 @@ async def get_gap_report(
         DocumentModel.document_type == "resume"
     ).first()
     
+    # OPTIMIZATION: Batch load all evidence in one query instead of N+1 queries
     gap_responses = []
+    if resume_doc and gaps:
+        # Load all evidence for all gaps in a single query
+        skill_ids = [gap.skill_id for gap in gaps]
+        all_evidence = db.query(SkillEvidence).filter(
+            SkillEvidence.document_id == resume_doc.id,
+            SkillEvidence.skill_id.in_(skill_ids)
+        ).all()
+        
+        # Group evidence by skill_id for O(1) lookup
+        evidence_by_skill = {}
+        for ev in all_evidence:
+            if ev.skill_id not in evidence_by_skill:
+                evidence_by_skill[ev.skill_id] = []
+            evidence_by_skill[ev.skill_id].append(ev)
+    else:
+        evidence_by_skill = {}
+    
+    # Build gap responses with pre-loaded evidence
     for gap in gaps:
         gap_response = GapResponse.model_validate(gap)
         
-        # Get evidence if resume exists
-        if resume_doc:
-            evidence_list = db.query(SkillEvidence).filter(
-                SkillEvidence.skill_id == gap.skill_id,
-                SkillEvidence.document_id == resume_doc.id
-            ).all()
-            
-            # Filter and validate evidence before converting
-            valid_evidence = []
-            for ev in evidence_list:
-                try:
-                    if ev.evidence_text and len(ev.evidence_text.strip()) >= 1:
-                        valid_evidence.append(skill_evidence_to_response(ev))
-                except Exception as e:
-                    logger.warning(f"Failed to serialize evidence {ev.id}: {e}")
-                    continue
-            gap_response.evidence = valid_evidence
-        else:
-            gap_response.evidence = []
+        # Get evidence from pre-loaded dictionary
+        evidence_list = evidence_by_skill.get(gap.skill_id, [])
         
+        # Filter and validate evidence before converting
+        valid_evidence = []
+        for ev in evidence_list:
+            try:
+                if ev.evidence_text and len(ev.evidence_text.strip()) >= 1:
+                    valid_evidence.append(skill_evidence_to_response(ev))
+            except Exception as e:
+                logger.warning(f"Failed to serialize evidence {ev.id}: {e}")
+                continue
+        gap_response.evidence = valid_evidence
         gap_responses.append(gap_response)
     
     critical_count = sum(1 for g in gaps if g.priority.value == "critical")

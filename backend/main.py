@@ -1,11 +1,19 @@
 """
 FastAPI application entry point for Interview Readiness Coach.
 """
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.router import api_router
 from app.db.database import engine, Base
+
+# Configure logging before anything else
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
 
 # Create database tables
 Base.metadata.create_all(bind=engine)

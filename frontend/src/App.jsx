@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
 import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
 import Upload from './pages/Upload'
+import DailyCoach from './pages/DailyCoach'
+import ErrorBoundary from './components/ErrorBoundary'
 
 function App() {
   return (
@@ -36,6 +38,12 @@ function App() {
                   >
                     Dashboard
                   </Link>
+                  <Link
+                    to="/coach"
+                    className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                  >
+                    Daily Coach
+                  </Link>
                 </div>
               </div>
             </div>
@@ -43,11 +51,14 @@ function App() {
         </nav>
 
         <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/upload" element={<Upload />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/upload" element={<Upload />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/coach" element={<DailyCoach />} />
+            </Routes>
+          </ErrorBoundary>
         </main>
       </div>
     </Router>
