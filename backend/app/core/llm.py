@@ -1,6 +1,7 @@
 """
 LLM initialization and utilities for LangChain integration.
 """
+import os
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel
@@ -11,6 +12,13 @@ except ImportError:
     ChatOllama = None  # Optional dependency
 
 from app.core.config import settings
+
+# Phase 12: LangSmith Tracing Setup
+if settings.LANGSMITH_TRACING and settings.LANGSMITH_API_KEY:
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = settings.LANGSMITH_API_KEY
+    os.environ["LANGCHAIN_PROJECT"] = settings.LANGSMITH_PROJECT
+    os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
 
 
 def get_llm() -> BaseChatModel:

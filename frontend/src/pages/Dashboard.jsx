@@ -14,6 +14,8 @@ function Dashboard() {
   const [adaptationAnalysis, setAdaptationAnalysis] = useState(null) // Phase 10
   const [adapting, setAdapting] = useState(false) // Phase 10
   const [exportingCalendar, setExportingCalendar] = useState(false) // Phase 11
+  const [systemMetrics, setSystemMetrics] = useState(null) // Phase 12
+  const [performanceMetrics, setPerformanceMetrics] = useState(null) // Phase 12
   
   // For testing - use the user_id from create_test_user.py (typically 1)
   const TEST_USER_ID = 1
@@ -39,6 +41,38 @@ function Dashboard() {
       fetchAdaptationAnalysis() // Phase 10 - fetch after study plan loads
     }
   }, [studyPlan])
+
+  // Phase 12: Observability
+  useEffect(() => {
+    fetchSystemMetrics()
+    fetchPerformanceMetrics()
+  }, [])
+
+  const fetchSystemMetrics = async () => {
+    try {
+      const response = await axios.get('/api/v1/observability/metrics', {
+        params: {
+          user_id: TEST_USER_ID
+        }
+      })
+      setSystemMetrics(response.data)
+    } catch (err) {
+      console.warn('Could not fetch system metrics:', err)
+    }
+  }
+
+  const fetchPerformanceMetrics = async () => {
+    try {
+      const response = await axios.get('/api/v1/observability/performance', {
+        params: {
+          days: 7
+        }
+      })
+      setPerformanceMetrics(response.data)
+    } catch (err) {
+      console.warn('Could not fetch performance metrics:', err)
+    }
+  }
 
   const fetchMasteryStats = async () => {
     try {
@@ -844,6 +878,75 @@ function Dashboard() {
                 )}
               </div>
             </div>
+
+            {/* System Observability - Phase 12 */}
+            {systemMetrics && (
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">📊 System Metrics</h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Study Plans</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {systemMetrics.user?.study_plans || 0}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Tasks</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {systemMetrics.user?.tasks || 0}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Practice Attempts</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {systemMetrics.user?.practice_attempts || 0}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Evaluations</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {systemMetrics.user?.evaluations || 0}
+                    </p>
+                  </div>
+                </div>
+                
+                {performanceMetrics && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Performance (Last 7 Days)</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-gray-600">Average Evaluation Score</p>
+                        <p className="text-xl font-bold text-primary-600">
+                          {(performanceMetrics.average_evaluation_score * 100).toFixed(1)}%
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Tasks Completed</p>
+                        <p className="text-xl font-bold text-green-600">
+                          {performanceMetrics.tasks_completed.reduce((sum, day) => sum + day.count, 0)}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {performanceMetrics.langsmith_tracing === 'enabled' && (
+                      <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded">
+                        <p className="text-xs text-blue-700">
+                          ✓ LangSmith tracing enabled - View traces at{' '}
+                          <a 
+                            href="https://smith.langchain.com" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="underline"
+                          >
+                            smith.langchain.com
+                          </a>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
