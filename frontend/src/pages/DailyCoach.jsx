@@ -249,6 +249,14 @@ function DailyCoach() {
       // Get task_id from parameter (passed from modal) or from selectedPracticeItem if available
       const finalTaskId = taskId || null
       
+      console.log('Submitting practice attempt:', {
+        practice_item_id: practiceItemId,
+        user_id: TEST_USER_ID,
+        answer: answer,
+        time_spent_seconds: timeSpentSeconds,
+        task_id: finalTaskId
+      })
+      
       const response = await axios.post('/api/v1/practice/attempts/submit', {
         practice_item_id: practiceItemId,
         user_id: TEST_USER_ID,
@@ -268,7 +276,9 @@ function DailyCoach() {
       return response.data
     } catch (err) {
       console.error('Error submitting practice attempt:', err)
-      alert(err.response?.data?.detail || 'Failed to submit practice attempt')
+      console.error('Error response:', err.response)
+      const errorMessage = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to submit practice attempt'
+      alert(`Error: ${errorMessage}`)
       throw err
     }
   }
@@ -853,8 +863,8 @@ function DailyCoach() {
             key={selectedPracticeItem.id}
             item={selectedPracticeItem}
             onClose={() => setSelectedPracticeItem(null)}
-            onSubmit={(practiceItemId, answer, timeSpentSeconds) => {
-              submitPracticeAttempt(practiceItemId, answer, timeSpentSeconds, selectedPracticeItem.task_id)
+            onSubmit={async (practiceItemId, answer, timeSpentSeconds, taskId) => {
+              return await submitPracticeAttempt(practiceItemId, answer, timeSpentSeconds, taskId)
             }}
             answer={practiceAnswers[selectedPracticeItem.id] || ''}
             onAnswerChange={(answer) => {
@@ -1197,7 +1207,8 @@ function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange }) 
     setSubmitting(true)
     try {
       const timeSpent = Math.floor((Date.now() - startTime) / 1000)
-      await onSubmit(item.id, answerToSubmit, timeSpent, item.task_id)
+      const taskId = item.task_id || null
+      await onSubmit(item.id, answerToSubmit, timeSpent, taskId)
     } catch (err) {
       // Error already handled in parent
     } finally {

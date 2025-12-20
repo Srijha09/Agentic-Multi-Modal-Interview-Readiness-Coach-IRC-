@@ -105,34 +105,53 @@ async def submit_attempt(
     Note: Evaluation happens in Phase 8 (Evaluation Agent).
     For now, we just store the attempt.
     """
-    # Verify practice item exists
-    practice_item = db.query(PracticeItem).filter(
-        PracticeItem.id == attempt_data.practice_item_id
-    ).first()
-    if not practice_item:
-        raise HTTPException(status_code=404, detail="Practice item not found")
-    
-    # Verify user exists
-    user = db.query(User).filter(User.id == attempt_data.user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # Create attempt
-    attempt = PracticeAttempt(
-        user_id=attempt_data.user_id,
-        practice_item_id=attempt_data.practice_item_id,
-        task_id=attempt_data.task_id,
-        answer=attempt_data.answer,
-        time_spent_seconds=attempt_data.time_spent_seconds,
-        score=None,  # Will be set by Evaluation Agent (Phase 8)
-        feedback=None  # Will be set by Evaluation Agent (Phase 8)
-    )
-    
-    db.add(attempt)
-    db.commit()
-    db.refresh(attempt)
-    
-    return PracticeAttemptResponse.model_validate(attempt)
+    try:
+        # Verify practice item exists
+        practice_item = db.query(PracticeItem).filter(
+            PracticeItem.id == attempt_data.practice_item_id
+        ).first()
+        if not practice_item:
+            raise HTTPException(status_code=404, detail="Practice item not found")
+        
+        # Verify user exists
+        user = db.query(User).filter(User.id == attempt_data.user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Verify task exists if task_id is provided
+        if attempt_data.task_id is not None:
+            task = db.query(DailyTask).filter(DailyTask.id == attempt_data.task_id).first()
+            if not task:
+                raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Create attempt
+        attempt = PracticeAttempt(
+            user_id=attempt_data.user_id,
+            practice_item_id=attempt_data.practice_item_id,
+            task_id=attempt_data.task_id,
+            answer=attempt_data.answer,
+            time_spent_seconds=attempt_data.time_spent_seconds,
+            score=None,  # Will be set by Evaluation Agent (Phase 8)
+            feedback=None  # Will be set by Evaluation Agent (Phase 8)
+        )
+        
+        db.add(attempt)
+        db.commit()
+        db.refresh(attempt)
+        
+        return PracticeAttemptResponse.model_validate(attempt)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        error_detail = str(e)
+        print(f"Error submitting practice attempt: {error_detail}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to submit practice attempt: {error_detail}"
+        )
 
 
 @router.get("/attempts/{attempt_id}", response_model=PracticeAttemptResponse)
