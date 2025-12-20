@@ -355,22 +355,7 @@ make frontend   # Start frontend server
 - **[SETUP.md](SETUP.md)** - Detailed setup instructions
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and design
 - **[DEMO_SCRIPT.md](DEMO_SCRIPT.md)** - Demo script for showcasing the system
-- **[KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md)** - Known limitations and future improvements
-
-### Phase Summaries
-
-- **[PHASE1_SUMMARY.md](PHASE1_SUMMARY.md)** - Project scaffolding
-- **[PHASE2_SUMMARY.md](PHASE2_SUMMARY.md)** - Document processing
-- **[PHASE4_SUMMARY.md](PHASE4_SUMMARY.md)** - Gap analysis
-- **[PHASE5_SUMMARY.md](PHASE5_SUMMARY.md)** - Study planning
-- **[PHASE6_SUMMARY.md](PHASE6_SUMMARY.md)** - Daily coaching
-- **[PHASE7_SUMMARY.md](PHASE7_SUMMARY.md)** - Practice generation
-- **[PHASE8_SUMMARY.md](PHASE8_SUMMARY.md)** - Evaluation agent
-- **[PHASE9_SUMMARY.md](PHASE9_SUMMARY.md)** - Mastery tracking
-- **[PHASE10_SUMMARY.md](PHASE10_SUMMARY.md)** - Adaptive planning
-- **[PHASE11_SUMMARY.md](PHASE11_SUMMARY.md)** - Calendar integration
-- **[PHASE12_SUMMARY.md](PHASE12_SUMMARY.md)** - Observability & testing
-
+- **[FUTURE_SCOPE.md](FUTURE_SCOPE.md)** - Known limitations and future improvements
 ---
 
 ## Usage Guide
@@ -572,16 +557,5 @@ See [LICENSE](LICENSE) file for details.
 - API built with [FastAPI](https://fastapi.tiangolo.com/)
 
 ---
-
-## Support
-
-For issues, questions, or contributions:
-- Check [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for known issues
-- Review [SETUP.md](SETUP.md) for setup help
-- See [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for usage examples
-
----
-
-**Last Updated:** Phase 13 - Documentation Complete
 **Version:** 1.0.0
 
