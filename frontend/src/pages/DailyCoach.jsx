@@ -15,6 +15,7 @@ function DailyCoach() {
   const [selectedPracticeItem, setSelectedPracticeItem] = useState(null) // For viewing/taking practice
   const [practiceAnswers, setPracticeAnswers] = useState({}) // practice_item_id -> answer
   const [evaluationResults, setEvaluationResults] = useState({}) // practice_item_id -> evaluation
+  const [masteryStats, setMasteryStats] = useState(null) // Phase 9
   const [pomodoro, setPomodoro] = useState({
     isRunning: false,
     isBreak: false,
@@ -35,6 +36,11 @@ function DailyCoach() {
       fetchPracticeItemsForTasks(briefing.tasks.map(t => t.id))
     }
   }, [briefing])
+
+  // Fetch mastery stats - Phase 9
+  useEffect(() => {
+    fetchMasteryStats()
+  }, [briefing]) // Refresh when briefing changes
 
   // Pomodoro timer effect
   useEffect(() => {
@@ -200,6 +206,17 @@ function DailyCoach() {
     }
   }
 
+  // Phase 9: Mastery Stats Functions
+  const fetchMasteryStats = async () => {
+    try {
+      const response = await axios.get(`/api/v1/mastery/user/${TEST_USER_ID}/stats`)
+      setMasteryStats(response.data)
+    } catch (err) {
+      // Mastery stats are optional
+      console.warn('Could not fetch mastery stats:', err)
+    }
+  }
+
   // Phase 7: Practice Items Functions
   const fetchPracticeItemsForTasks = async (taskIds) => {
     try {
@@ -273,6 +290,9 @@ function DailyCoach() {
           [practiceItemId]: response.data.evaluation
         }))
       }
+      
+      // Phase 9: Refresh mastery stats after evaluation
+      await fetchMasteryStats()
       
       // Don't close modal immediately - show evaluation results
       // setSelectedPracticeItem(null)
@@ -601,6 +621,47 @@ function DailyCoach() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Mastery Stats - Phase 9 */}
+        {masteryStats && (
+          <div className="bg-white p-6 rounded-lg shadow mb-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">📊 Your Skill Mastery</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <p className="text-xs text-gray-600">Average Mastery</p>
+                <p className="text-2xl font-bold text-primary-600">
+                  {(masteryStats.average_mastery * 100).toFixed(0)}%
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600">Total Skills</p>
+                <p className="text-2xl font-bold text-gray-900">{masteryStats.total_skills}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600">Total Practice</p>
+                <p className="text-2xl font-bold text-gray-900">{masteryStats.total_practice_count}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600">This Week</p>
+                <p className="text-2xl font-bold text-gray-900">{masteryStats.recent_practice_count}</p>
+              </div>
+            </div>
+            <div className="flex gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-green-600 font-semibold">↑</span>
+                <span className="text-gray-700">{masteryStats.improving_skills} Improving</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-600 font-semibold">→</span>
+                <span className="text-gray-700">{masteryStats.stable_skills} Stable</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-red-600 font-semibold">↓</span>
+                <span className="text-gray-700">{masteryStats.declining_skills} Declining</span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1203,7 +1264,7 @@ function PracticeItemCard({ item, onView }) {
 }
 
 // Evaluation Display Component (Phase 8)
-function EvaluationDisplay({ evaluation, onClose }) {
+function EvaluationDisplay({ evaluation, onClose, item, userAnswer }) {
   if (!evaluation) {
     return (
       <div className="text-center py-8">
@@ -1217,6 +1278,13 @@ function EvaluationDisplay({ evaluation, onClose }) {
     scorePercentage >= 80 ? 'text-green-600' :
     scorePercentage >= 60 ? 'text-yellow-600' :
     'text-red-600'
+
+  // For quizzes, show correct answer comparison
+  const isQuiz = item?.practice_type === 'quiz'
+  const correctAnswer = item?.expected_answer || ''
+  const userSelected = userAnswer || ''
+  const isCorrect = isQuiz && userSelected && correctAnswer && 
+    userSelected.trim().toUpperCase() === correctAnswer.trim().toUpperCase()
 
   return (
     <div className="space-y-6">
@@ -1235,6 +1303,67 @@ function EvaluationDisplay({ evaluation, onClose }) {
           </div>
         </div>
       </div>
+
+      {/* Quiz Answer Comparison */}
+      {isQuiz && correctAnswer && (
+        <div className={`border-2 rounded-lg p-4 ${
+          isCorrect ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'
+        }`}>
+          <div className="flex items-center gap-2 mb-3">
+            {isCorrect ? (
+              <span className="text-2xl">✓</span>
+            ) : (
+              <span className="text-2xl">✗</span>
+            )}
+            <h4 className="text-lg font-bold text-gray-900">
+              {isCorrect ? 'Correct!' : 'Incorrect'}
+            </h4>
+          </div>
+          
+          <div className="space-y-2 text-sm">
+            <div>
+              <span className="font-semibold text-gray-700">Your Answer: </span>
+              <span className="text-gray-900">
+                {userSelected || 'No answer provided'}
+              </span>
+            </div>
+            <div>
+              <span className="font-semibold text-gray-700">Correct Answer: </span>
+              <span className="text-gray-900">{correctAnswer}</span>
+            </div>
+            
+            {/* Show the full option text if it's a letter (A, B, C, D) */}
+            {item?.content?.options && userSelected && correctAnswer && (
+              <div className="mt-3 pt-3 border-t border-gray-300">
+                {userSelected && item.content.options[userSelected.charCodeAt(0) - 65] && (
+                  <div className="mb-2">
+                    <span className="font-semibold text-gray-700">Your Selection: </span>
+                    <span className="text-gray-900">
+                      {userSelected}. {item.content.options[userSelected.charCodeAt(0) - 65]}
+                    </span>
+                  </div>
+                )}
+                {correctAnswer && item.content.options[correctAnswer.charCodeAt(0) - 65] && (
+                  <div>
+                    <span className="font-semibold text-gray-700">Correct Option: </span>
+                    <span className="text-gray-900">
+                      {correctAnswer}. {item.content.options[correctAnswer.charCodeAt(0) - 65]}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Show explanation if available */}
+            {item?.content?.explanation && (
+              <div className="mt-3 pt-3 border-t border-gray-300">
+                <p className="font-semibold text-gray-700 mb-1">Explanation:</p>
+                <p className="text-gray-800">{item.content.explanation}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Criterion Scores */}
       {evaluation.criterion_scores && Object.keys(evaluation.criterion_scores).length > 0 && (
@@ -1320,6 +1449,7 @@ function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange, ev
   const [submitting, setSubmitting] = useState(false)
   const [startTime] = useState(Date.now())
   const [currentEvaluation, setCurrentEvaluation] = useState(evaluation)
+  const [showAnswer, setShowAnswer] = useState(false) // For flashcard - moved to top level
   
   // Update evaluation when prop changes
   useEffect(() => {
@@ -1330,7 +1460,9 @@ function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange, ev
 
   const handleSubmit = async (overrideAnswer = null) => {
     const answerToSubmit = overrideAnswer !== null ? overrideAnswer : answer
-    if (!answerToSubmit || !answerToSubmit.trim()) {
+    console.log('handleSubmit called:', { overrideAnswer, answer, answerToSubmit, itemId: item.id })
+    
+    if (!answerToSubmit || (typeof answerToSubmit === 'string' && !answerToSubmit.trim())) {
       alert('Please provide an answer')
       return
     }
@@ -1339,12 +1471,15 @@ function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange, ev
     try {
       const timeSpent = Math.floor((Date.now() - startTime) / 1000)
       const taskId = item.task_id || null
+      console.log('Calling onSubmit with:', { itemId: item.id, answer: answerToSubmit, timeSpent, taskId })
       const result = await onSubmit(item.id, answerToSubmit, timeSpent, taskId)
+      console.log('Submit result:', result)
       // Show evaluation if available
       if (result && result.evaluation) {
         setCurrentEvaluation(result.evaluation)
       }
     } catch (err) {
+      console.error('Error submitting answer:', err)
       // Error already handled in parent
     } finally {
       setSubmitting(false)
@@ -1381,7 +1516,10 @@ function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange, ev
                     name="quiz-answer"
                     value={optionLabel}
                     checked={answer === optionLabel}
-                    onChange={(e) => onAnswerChange(e.target.value)}
+                    onChange={(e) => {
+                      console.log('Radio button changed:', e.target.value)
+                      onAnswerChange(e.target.value)
+                    }}
                     className="mr-3"
                   />
                   <span className="font-semibold text-gray-700 mr-2">{optionLabel}.</span>
@@ -1416,8 +1554,6 @@ function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange, ev
   }
 
   const renderFlashcard = () => {
-    const [showAnswer, setShowAnswer] = useState(false)
-
     return (
       <div className="space-y-4">
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-6 min-h-[200px] flex items-center justify-center">
@@ -1663,8 +1799,13 @@ function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange, ev
               {item.practice_type !== 'flashcard' && (
                 <div className="mt-6 flex gap-3">
                   <button
-                    onClick={handleSubmit}
-                    disabled={submitting || !answer.trim()}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      console.log('Submit button clicked, answer:', answer)
+                      handleSubmit()
+                    }}
+                    disabled={submitting || !answer || (typeof answer === 'string' && !answer.trim())}
                     className="flex-1 bg-primary-600 text-white px-4 py-3 rounded-lg hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-semibold"
                   >
                     {submitting ? 'Submitting...' : 'Submit Answer'}
@@ -1682,6 +1823,8 @@ function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange, ev
             <EvaluationDisplay 
               evaluation={currentEvaluation}
               onClose={onClose}
+              item={item}
+              userAnswer={answer}
             />
           )}
         </div>

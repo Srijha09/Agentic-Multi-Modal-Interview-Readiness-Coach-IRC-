@@ -17,10 +17,12 @@ from app.schemas.practice import (
 from app.schemas.evaluation import EvaluationResponse
 from app.services.practice_generator import PracticeGenerator
 from app.services.evaluator import EvaluationAgent
+from app.services.mastery_tracker import MasteryTracker
 
 router = APIRouter()
 practice_generator = PracticeGenerator()
 evaluator = EvaluationAgent()
+mastery_tracker = MasteryTracker()
 
 
 @router.post("/items/generate", response_model=List[PracticeItemResponse])
@@ -149,8 +151,16 @@ async def submit_attempt(
             attempt.feedback = evaluation.feedback
             db.commit()
             db.refresh(attempt)
+            
+            # Phase 9: Update mastery scores based on evaluation
+            try:
+                mastery_tracker.update_mastery_from_evaluation(evaluation, db)
+            except Exception as mastery_error:
+                # Log but don't fail if mastery update fails
+                import logging
+                logging.error(f"Mastery update failed for evaluation {evaluation.id}: {mastery_error}")
+            
             # Reload with evaluation relationship
-            db.refresh(attempt)
             attempt = db.query(PracticeAttempt).options(
                 joinedload(PracticeAttempt.evaluation)
             ).filter(PracticeAttempt.id == attempt.id).first()
@@ -246,21 +256,30 @@ async def evaluate_attempt(
     if existing_eval:
         return EvaluationResponse.model_validate(existing_eval)
     
-    # Create new evaluation
-    try:
-        evaluation = evaluator.evaluate_attempt(attempt, db)
-        # Update attempt with evaluation scores
-        attempt.score = evaluation.overall_score
-        attempt.feedback = evaluation.feedback
-        db.commit()
-        db.refresh(attempt)
-        return EvaluationResponse.model_validate(evaluation)
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to evaluate attempt: {str(e)}"
-        )
+        # Create new evaluation
+        try:
+            evaluation = evaluator.evaluate_attempt(attempt, db)
+            # Update attempt with evaluation scores
+            attempt.score = evaluation.overall_score
+            attempt.feedback = evaluation.feedback
+            db.commit()
+            db.refresh(attempt)
+            
+            # Phase 9: Update mastery scores based on evaluation
+            try:
+                mastery_tracker.update_mastery_from_evaluation(evaluation, db)
+            except Exception as mastery_error:
+                # Log but don't fail if mastery update fails
+                import logging
+                logging.error(f"Mastery update failed for evaluation {evaluation.id}: {mastery_error}")
+            
+            return EvaluationResponse.model_validate(evaluation)
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to evaluate attempt: {str(e)}"
+            )
 
 
 

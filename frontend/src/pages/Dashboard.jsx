@@ -10,6 +10,7 @@ function Dashboard() {
   const [error, setError] = useState(null)
   const [expandedTasks, setExpandedTasks] = useState(new Set())
   const [expandedWeek, setExpandedWeek] = useState(null)
+  const [masteryStats, setMasteryStats] = useState(null) // Phase 9
   
   // For testing - use the user_id from create_test_user.py (typically 1)
   const TEST_USER_ID = 1
@@ -27,7 +28,18 @@ function Dashboard() {
 
   useEffect(() => {
     fetchDashboardData()
+    fetchMasteryStats() // Phase 9
   }, [])
+
+  const fetchMasteryStats = async () => {
+    try {
+      const response = await axios.get(`/api/v1/mastery/user/${TEST_USER_ID}/stats`)
+      setMasteryStats(response.data)
+    } catch (err) {
+      // Mastery stats are optional, so don't show error
+      console.warn('Could not fetch mastery stats:', err)
+    }
+  }
 
   const fetchDashboardData = async () => {
     setLoading(true)
@@ -192,6 +204,103 @@ function Dashboard() {
                   {studyPlan.total_estimated_hours?.toFixed(1) || 0}h total
                 </p>
               </div>
+            </div>
+
+            {/* Mastery Stats Section - Phase 9 */}
+            <div className="bg-white p-6 rounded-lg shadow mb-8">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">📊 Skill Mastery Overview</h2>
+                <button
+                  onClick={fetchMasteryStats}
+                  className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                  title="Refresh mastery stats"
+                >
+                  🔄 Refresh
+                </button>
+              </div>
+              {masteryStats ? (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Average Mastery</p>
+                      <p className="text-2xl font-bold text-primary-600">
+                        {(masteryStats.average_mastery * 100).toFixed(0)}%
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Total Skills</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {masteryStats.total_skills}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Total Practice</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {masteryStats.total_practice_count}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">This Week</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {masteryStats.recent_practice_count}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div className="bg-blue-50 p-3 rounded">
+                      <p className="text-xs text-blue-700 font-semibold">Beginner</p>
+                      <p className="text-lg font-bold text-blue-900">
+                        {masteryStats.skills_by_level?.beginner || 0}
+                      </p>
+                    </div>
+                    <div className="bg-yellow-50 p-3 rounded">
+                      <p className="text-xs text-yellow-700 font-semibold">Intermediate</p>
+                      <p className="text-lg font-bold text-yellow-900">
+                        {masteryStats.skills_by_level?.intermediate || 0}
+                      </p>
+                    </div>
+                    <div className="bg-orange-50 p-3 rounded">
+                      <p className="text-xs text-orange-700 font-semibold">Advanced</p>
+                      <p className="text-lg font-bold text-orange-900">
+                        {masteryStats.skills_by_level?.advanced || 0}
+                      </p>
+                    </div>
+                    <div className="bg-green-50 p-3 rounded">
+                      <p className="text-xs text-green-700 font-semibold">Expert</p>
+                      <p className="text-lg font-bold text-green-900">
+                        {masteryStats.skills_by_level?.expert || 0}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-600 font-semibold">↑</span>
+                      <span className="text-gray-700">
+                        {masteryStats.improving_skills} Improving
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-600 font-semibold">→</span>
+                      <span className="text-gray-700">
+                        {masteryStats.stable_skills} Stable
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-red-600 font-semibold">↓</span>
+                      <span className="text-gray-700">
+                        {masteryStats.declining_skills} Declining
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No mastery data yet. Start practicing to see your progress!</p>
+                  <p className="text-sm mt-2">Submit practice attempts to track your skill mastery.</p>
+                </div>
+              )}
             </div>
 
             {/* Today's Tasks */}
