@@ -11,6 +11,8 @@ function Dashboard() {
   const [expandedTasks, setExpandedTasks] = useState(new Set())
   const [expandedWeek, setExpandedWeek] = useState(null)
   const [masteryStats, setMasteryStats] = useState(null) // Phase 9
+  const [adaptationAnalysis, setAdaptationAnalysis] = useState(null) // Phase 10
+  const [adapting, setAdapting] = useState(false) // Phase 10
   
   // For testing - use the user_id from create_test_user.py (typically 1)
   const TEST_USER_ID = 1
@@ -31,6 +33,12 @@ function Dashboard() {
     fetchMasteryStats() // Phase 9
   }, [])
 
+  useEffect(() => {
+    if (studyPlan) {
+      fetchAdaptationAnalysis() // Phase 10 - fetch after study plan loads
+    }
+  }, [studyPlan])
+
   const fetchMasteryStats = async () => {
     try {
       const response = await axios.get(`/api/v1/mastery/user/${TEST_USER_ID}/stats`)
@@ -38,6 +46,45 @@ function Dashboard() {
     } catch (err) {
       // Mastery stats are optional, so don't show error
       console.warn('Could not fetch mastery stats:', err)
+    }
+  }
+
+  // Phase 10: Adaptive Planning
+  const fetchAdaptationAnalysis = async () => {
+    if (!studyPlan) return
+    try {
+      const response = await axios.get('/api/v1/adaptive/analyze', {
+        params: {
+          user_id: TEST_USER_ID,
+          study_plan_id: studyPlan.id
+        }
+      })
+      setAdaptationAnalysis(response.data)
+    } catch (err) {
+      console.warn('Could not fetch adaptation analysis:', err)
+    }
+  }
+
+  const applyAdaptations = async () => {
+    if (!studyPlan) return
+    setAdapting(true)
+    try {
+      const response = await axios.post('/api/v1/adaptive/adapt', null, {
+        params: {
+          user_id: TEST_USER_ID,
+          study_plan_id: studyPlan.id,
+          apply_recommendations: true
+        }
+      })
+      alert(`Plan adapted successfully! Added ${response.data.summary.reinforcement_tasks_added} reinforcement tasks.`)
+      // Refresh dashboard data
+      await fetchDashboardData()
+      await fetchAdaptationAnalysis()
+    } catch (err) {
+      console.error('Error adapting plan:', err)
+      alert(err.response?.data?.detail || 'Failed to adapt plan')
+    } finally {
+      setAdapting(false)
     }
   }
 
@@ -302,6 +349,79 @@ function Dashboard() {
                 </div>
               )}
             </div>
+
+            {/* Adaptive Planning Recommendations - Phase 10 */}
+            {adaptationAnalysis && adaptationAnalysis.analysis && (
+              <div className="bg-white p-6 rounded-lg shadow mb-8">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold text-gray-900">🔄 Adaptive Plan Recommendations</h2>
+                  <button
+                    onClick={applyAdaptations}
+                    disabled={adapting || adaptationAnalysis.analysis.recommendations.length === 0}
+                    className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    {adapting ? 'Applying...' : 'Apply Recommendations'}
+                  </button>
+                </div>
+                
+                {adaptationAnalysis.analysis.recommendations.length > 0 ? (
+                  <div className="space-y-3">
+                    {adaptationAnalysis.analysis.recommendations.map((rec, idx) => (
+                      <div
+                        key={idx}
+                        className={`p-3 rounded-lg border-2 ${
+                          rec.priority === 'high'
+                            ? 'border-red-300 bg-red-50'
+                            : rec.priority === 'medium'
+                            ? 'border-yellow-300 bg-yellow-50'
+                            : 'border-blue-300 bg-blue-50'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="font-semibold text-gray-900">{rec.action}</p>
+                            <p className="text-sm text-gray-700 mt-1">
+                              <span className="font-medium">Skill:</span> {rec.skill}
+                            </p>
+                            <p className="text-xs text-gray-600 mt-1">
+                              <span className="font-medium">Reason:</span> {rec.reason}
+                            </p>
+                          </div>
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            rec.priority === 'high'
+                              ? 'bg-red-200 text-red-800'
+                              : rec.priority === 'medium'
+                              ? 'bg-yellow-200 text-yellow-800'
+                              : 'bg-blue-200 text-blue-800'
+                          }`}>
+                            {rec.priority}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-600 text-center py-4">
+                    No adaptations needed. Your plan is well-balanced!
+                  </p>
+                )}
+                
+                <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600">Weak Skills: </span>
+                    <span className="font-semibold text-red-600">
+                      {adaptationAnalysis.analysis.total_weak}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Strong Skills: </span>
+                    <span className="font-semibold text-green-600">
+                      {adaptationAnalysis.analysis.total_strong}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Today's Tasks */}
             {todayTasks.length > 0 && (
