@@ -1,23 +1,26 @@
 """
-Practice endpoints (quizzes, flashcards, prompts) - Phase 7.
+Practice endpoints (quizzes, flashcards, prompts) - Phase 7 & 8.
 """
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import Optional, List
 
 from app.db.database import get_db
 from app.db.models import (
     PracticeItem, PracticeAttempt, PracticeTypeEnum,
-    DailyTask, User
+    DailyTask, User, Evaluation
 )
 from app.schemas.practice import (
     PracticeItemResponse, PracticeAttemptCreate,
     PracticeAttemptResponse
 )
+from app.schemas.evaluation import EvaluationResponse
 from app.services.practice_generator import PracticeGenerator
+from app.services.evaluator import EvaluationAgent
 
 router = APIRouter()
 practice_generator = PracticeGenerator()
+evaluator = EvaluationAgent()
 
 
 @router.post("/items/generate", response_model=List[PracticeItemResponse])
@@ -100,10 +103,9 @@ async def submit_attempt(
     db: Session = Depends(get_db)
 ):
     """
-    Submit a practice attempt.
+    Submit a practice attempt and automatically evaluate it (Phase 8).
     
-    Note: Evaluation happens in Phase 8 (Evaluation Agent).
-    For now, we just store the attempt.
+    The attempt is immediately evaluated using the Evaluation Agent.
     """
     try:
         # Verify practice item exists
@@ -131,15 +133,39 @@ async def submit_attempt(
             task_id=attempt_data.task_id,
             answer=attempt_data.answer,
             time_spent_seconds=attempt_data.time_spent_seconds,
-            score=None,  # Will be set by Evaluation Agent (Phase 8)
-            feedback=None  # Will be set by Evaluation Agent (Phase 8)
+            score=None,  # Will be set by evaluation
+            feedback=None  # Will be set by evaluation
         )
         
         db.add(attempt)
         db.commit()
         db.refresh(attempt)
         
-        return PracticeAttemptResponse.model_validate(attempt)
+        # Phase 8: Automatically evaluate the attempt
+        try:
+            evaluation = evaluator.evaluate_attempt(attempt, db)
+            # Update attempt with evaluation scores
+            attempt.score = evaluation.overall_score
+            attempt.feedback = evaluation.feedback
+            db.commit()
+            db.refresh(attempt)
+            # Reload with evaluation relationship
+            db.refresh(attempt)
+            attempt = db.query(PracticeAttempt).options(
+                joinedload(PracticeAttempt.evaluation)
+            ).filter(PracticeAttempt.id == attempt.id).first()
+        except Exception as eval_error:
+            # Log evaluation error but don't fail the submission
+            import logging
+            logging.error(f"Evaluation failed for attempt {attempt.id}: {eval_error}")
+            # Attempt is still saved, just without evaluation
+        
+        # Build response with evaluation
+        response_data = PracticeAttemptResponse.model_validate(attempt)
+        if attempt.evaluation:
+            from app.schemas.evaluation import EvaluationResponse
+            response_data.evaluation = EvaluationResponse.model_validate(attempt.evaluation)
+        return response_data
     except HTTPException:
         raise
     except Exception as e:
@@ -159,14 +185,82 @@ async def get_attempt(
     attempt_id: int,
     db: Session = Depends(get_db)
 ):
-    """Get practice attempt by ID."""
+    """Get practice attempt by ID with evaluation (Phase 8)."""
+    attempt = db.query(PracticeAttempt).options(
+        joinedload(PracticeAttempt.evaluation)
+    ).filter(
+        PracticeAttempt.id == attempt_id
+    ).first()
+    if not attempt:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    
+    response = PracticeAttemptResponse.model_validate(attempt)
+    if attempt.evaluation:
+        from app.schemas.evaluation import EvaluationResponse
+        response.evaluation = EvaluationResponse.model_validate(attempt.evaluation)
+    return response
+
+
+@router.get("/attempts/{attempt_id}/evaluation", response_model=EvaluationResponse)
+async def get_attempt_evaluation(
+    attempt_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get evaluation for a practice attempt (Phase 8)."""
     attempt = db.query(PracticeAttempt).filter(
         PracticeAttempt.id == attempt_id
     ).first()
     if not attempt:
         raise HTTPException(status_code=404, detail="Attempt not found")
     
-    return PracticeAttemptResponse.model_validate(attempt)
+    evaluation = db.query(Evaluation).filter(
+        Evaluation.practice_attempt_id == attempt_id
+    ).first()
+    
+    if not evaluation:
+        raise HTTPException(
+            status_code=404, 
+            detail="Evaluation not found. The attempt may not have been evaluated yet."
+        )
+    
+    return EvaluationResponse.model_validate(evaluation)
+
+
+@router.post("/attempts/{attempt_id}/evaluate", response_model=EvaluationResponse)
+async def evaluate_attempt(
+    attempt_id: int,
+    db: Session = Depends(get_db)
+):
+    """Manually trigger evaluation for a practice attempt (Phase 8)."""
+    attempt = db.query(PracticeAttempt).filter(
+        PracticeAttempt.id == attempt_id
+    ).first()
+    if not attempt:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    
+    # Check if evaluation already exists
+    existing_eval = db.query(Evaluation).filter(
+        Evaluation.practice_attempt_id == attempt_id
+    ).first()
+    
+    if existing_eval:
+        return EvaluationResponse.model_validate(existing_eval)
+    
+    # Create new evaluation
+    try:
+        evaluation = evaluator.evaluate_attempt(attempt, db)
+        # Update attempt with evaluation scores
+        attempt.score = evaluation.overall_score
+        attempt.feedback = evaluation.feedback
+        db.commit()
+        db.refresh(attempt)
+        return EvaluationResponse.model_validate(evaluation)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to evaluate attempt: {str(e)}"
+        )
 
 
 

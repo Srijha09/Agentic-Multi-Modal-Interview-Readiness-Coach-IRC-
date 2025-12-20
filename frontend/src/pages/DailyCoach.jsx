@@ -14,6 +14,7 @@ function DailyCoach() {
   const [generatingPractice, setGeneratingPractice] = useState({}) // task_id -> practice_type
   const [selectedPracticeItem, setSelectedPracticeItem] = useState(null) // For viewing/taking practice
   const [practiceAnswers, setPracticeAnswers] = useState({}) // practice_item_id -> answer
+  const [evaluationResults, setEvaluationResults] = useState({}) // practice_item_id -> evaluation
   const [pomodoro, setPomodoro] = useState({
     isRunning: false,
     isBreak: false,
@@ -265,8 +266,16 @@ function DailyCoach() {
         task_id: finalTaskId
       })
       
-      alert('Practice attempt submitted! (Evaluation will happen in Phase 8)')
-      setSelectedPracticeItem(null)
+      // Phase 8: Store evaluation results if available
+      if (response.data.evaluation) {
+        setEvaluationResults(prev => ({
+          ...prev,
+          [practiceItemId]: response.data.evaluation
+        }))
+      }
+      
+      // Don't close modal immediately - show evaluation results
+      // setSelectedPracticeItem(null)
       setPracticeAnswers(prev => {
         const next = { ...prev }
         delete next[practiceItemId]
@@ -871,6 +880,7 @@ function DailyCoach() {
               const itemId = selectedPracticeItem.id
               setPracticeAnswers(prev => ({ ...prev, [itemId]: answer }))
             }}
+            evaluation={evaluationResults[selectedPracticeItem.id]}
           />
         )}
       </div>
@@ -1192,10 +1202,131 @@ function PracticeItemCard({ item, onView }) {
   )
 }
 
+// Evaluation Display Component (Phase 8)
+function EvaluationDisplay({ evaluation, onClose }) {
+  if (!evaluation) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-600">Evaluation loading...</p>
+      </div>
+    )
+  }
+
+  const scorePercentage = Math.round(evaluation.overall_score * 100)
+  const scoreColor = 
+    scorePercentage >= 80 ? 'text-green-600' :
+    scorePercentage >= 60 ? 'text-yellow-600' :
+    'text-red-600'
+
+  return (
+    <div className="space-y-6">
+      {/* Score Header */}
+      <div className="text-center">
+        <h3 className="text-2xl font-bold text-gray-900 mb-2">Your Results</h3>
+        <div className="flex items-center justify-center gap-4">
+          <div className={`text-5xl font-bold ${scoreColor}`}>
+            {scorePercentage}%
+          </div>
+          <div className="text-left">
+            <p className="text-sm text-gray-600">Overall Score</p>
+            <p className="text-xs text-gray-500">
+              {evaluation.overall_score.toFixed(2)} / 1.0
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Criterion Scores */}
+      {evaluation.criterion_scores && Object.keys(evaluation.criterion_scores).length > 0 && (
+        <div className="bg-gray-50 rounded-lg p-4">
+          <h4 className="font-semibold text-gray-900 mb-3">Detailed Scores</h4>
+          <div className="space-y-2">
+            {Object.entries(evaluation.criterion_scores).map(([criterion, score]) => {
+              const criterionPercentage = Math.round(score * 100)
+              return (
+                <div key={criterion} className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700">{criterion}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-32 bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-primary-600 h-2 rounded-full"
+                        style={{ width: `${criterionPercentage}%` }}
+                      ></div>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900 w-12 text-right">
+                      {criterionPercentage}%
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Strengths */}
+      {evaluation.strengths && evaluation.strengths.length > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <h4 className="font-semibold text-green-900 mb-2 flex items-center">
+            <span className="mr-2">✓</span> Strengths
+          </h4>
+          <ul className="list-disc list-inside space-y-1 text-sm text-green-800">
+            {evaluation.strengths.map((strength, idx) => (
+              <li key={idx}>{strength}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Weaknesses */}
+      {evaluation.weaknesses && evaluation.weaknesses.length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+          <h4 className="font-semibold text-orange-900 mb-2 flex items-center">
+            <span className="mr-2">⚠</span> Areas for Improvement
+          </h4>
+          <ul className="list-disc list-inside space-y-1 text-sm text-orange-800">
+            {evaluation.weaknesses.map((weakness, idx) => (
+              <li key={idx}>{weakness}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Feedback */}
+      {evaluation.feedback && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 className="font-semibold text-blue-900 mb-2">Feedback</h4>
+          <p className="text-sm text-blue-800 whitespace-pre-wrap">
+            {evaluation.feedback}
+          </p>
+        </div>
+      )}
+
+      {/* Close Button */}
+      <div className="flex justify-end">
+        <button
+          onClick={onClose}
+          className="bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 font-semibold"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // Practice Item Modal Component (for taking quizzes, viewing flashcards, etc.)
-function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange }) {
+function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange, evaluation }) {
   const [submitting, setSubmitting] = useState(false)
   const [startTime] = useState(Date.now())
+  const [currentEvaluation, setCurrentEvaluation] = useState(evaluation)
+  
+  // Update evaluation when prop changes
+  useEffect(() => {
+    if (evaluation) {
+      setCurrentEvaluation(evaluation)
+    }
+  }, [evaluation])
 
   const handleSubmit = async (overrideAnswer = null) => {
     const answerToSubmit = overrideAnswer !== null ? overrideAnswer : answer
@@ -1208,7 +1339,11 @@ function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange }) 
     try {
       const timeSpent = Math.floor((Date.now() - startTime) / 1000)
       const taskId = item.task_id || null
-      await onSubmit(item.id, answerToSubmit, timeSpent, taskId)
+      const result = await onSubmit(item.id, answerToSubmit, timeSpent, taskId)
+      // Show evaluation if available
+      if (result && result.evaluation) {
+        setCurrentEvaluation(result.evaluation)
+      }
     } catch (err) {
       // Error already handled in parent
     } finally {
@@ -1521,24 +1656,33 @@ function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange }) 
         </div>
 
         <div className="p-6">
-          {renderContent()}
+          {!currentEvaluation ? (
+            <>
+              {renderContent()}
 
-          {item.practice_type !== 'flashcard' && (
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={handleSubmit}
-                disabled={submitting || !answer.trim()}
-                className="flex-1 bg-primary-600 text-white px-4 py-3 rounded-lg hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-semibold"
-              >
-                {submitting ? 'Submitting...' : 'Submit Answer'}
-              </button>
-              <button
-                onClick={onClose}
-                className="bg-gray-300 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold"
-              >
-                Cancel
-              </button>
-            </div>
+              {item.practice_type !== 'flashcard' && (
+                <div className="mt-6 flex gap-3">
+                  <button
+                    onClick={handleSubmit}
+                    disabled={submitting || !answer.trim()}
+                    className="flex-1 bg-primary-600 text-white px-4 py-3 rounded-lg hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-semibold"
+                  >
+                    {submitting ? 'Submitting...' : 'Submit Answer'}
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="bg-gray-300 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <EvaluationDisplay 
+              evaluation={currentEvaluation}
+              onClose={onClose}
+            />
           )}
         </div>
       </div>

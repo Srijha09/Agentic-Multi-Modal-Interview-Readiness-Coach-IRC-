@@ -1,4 +1,6 @@
 """Practice item and attempt schemas."""
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -70,6 +72,17 @@ class PracticeAttemptResponse(PracticeAttemptBase):
     evaluation_id: Optional[int] = None
     created_at: datetime
     practice_item: Optional[PracticeItemResponse] = None
+    evaluation: Optional["EvaluationResponse"] = None  # Phase 8
 
     model_config = {"from_attributes": True}
+
+
+# Update forward references after all classes are defined
+# This is needed for Pydantic to resolve the forward reference
+try:
+    from app.schemas.evaluation import EvaluationResponse
+    PracticeAttemptResponse.model_rebuild()
+except ImportError:
+    # If evaluation schema not available yet, that's okay
+    pass
 
