@@ -13,6 +13,7 @@ function Dashboard() {
   const [masteryStats, setMasteryStats] = useState(null) // Phase 9
   const [adaptationAnalysis, setAdaptationAnalysis] = useState(null) // Phase 10
   const [adapting, setAdapting] = useState(false) // Phase 10
+  const [exportingCalendar, setExportingCalendar] = useState(false) // Phase 11
   
   // For testing - use the user_id from create_test_user.py (typically 1)
   const TEST_USER_ID = 1
@@ -85,6 +86,49 @@ function Dashboard() {
       alert(err.response?.data?.detail || 'Failed to adapt plan')
     } finally {
       setAdapting(false)
+    }
+  }
+
+  // Phase 11: Calendar Export
+  const exportCalendar = async () => {
+    if (!studyPlan) return
+    setExportingCalendar(true)
+    try {
+      // First generate calendar events if they don't exist
+      await axios.post('/api/v1/calendar/generate', null, {
+        params: {
+          user_id: TEST_USER_ID,
+          study_plan_id: studyPlan.id,
+          regenerate: false
+        }
+      })
+      
+      // Then export as ICS file
+      const response = await axios.get('/api/v1/calendar/export', {
+        params: {
+          user_id: TEST_USER_ID,
+          study_plan_id: studyPlan.id,
+          calendar_name: `Study Plan - ${studyPlan.id}`
+        },
+        responseType: 'blob'
+      })
+      
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `study_plan_${studyPlan.id}.ics`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      
+      alert('Calendar exported successfully! You can import it into Google Calendar, Outlook, or any calendar app.')
+    } catch (err) {
+      console.error('Error exporting calendar:', err)
+      alert(err.response?.data?.detail || 'Failed to export calendar')
+    } finally {
+      setExportingCalendar(false)
     }
   }
 
@@ -192,12 +236,24 @@ function Dashboard() {
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <Link
-            to="/coach"
-            className="inline-block bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700"
-          >
-            View Daily Coach
-          </Link>
+          <div className="flex gap-3">
+            {studyPlan && (
+              <button
+                onClick={exportCalendar}
+                disabled={exportingCalendar}
+                className="inline-block bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                title="Export study plan to calendar (ICS format)"
+              >
+                {exportingCalendar ? 'Exporting...' : '📅 Export Calendar'}
+              </button>
+            )}
+            <Link
+              to="/coach"
+              className="inline-block bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700"
+            >
+              View Daily Coach
+            </Link>
+          </div>
         </div>
         
         {!studyPlan && (
