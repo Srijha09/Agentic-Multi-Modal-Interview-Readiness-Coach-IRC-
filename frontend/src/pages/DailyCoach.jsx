@@ -10,6 +10,10 @@ function DailyCoach() {
   const [rescheduleModal, setRescheduleModal] = useState({ open: false, task: null, newDate: '' })
   const [carryOverModal, setCarryOverModal] = useState({ open: false, fromDate: '', toDate: '' })
   const [enriching, setEnriching] = useState(false)
+  const [practiceItems, setPracticeItems] = useState({}) // task_id -> [practice items]
+  const [generatingPractice, setGeneratingPractice] = useState({}) // task_id -> practice_type
+  const [selectedPracticeItem, setSelectedPracticeItem] = useState(null) // For viewing/taking practice
+  const [practiceAnswers, setPracticeAnswers] = useState({}) // practice_item_id -> answer
   const [pomodoro, setPomodoro] = useState({
     isRunning: false,
     isBreak: false,
@@ -23,6 +27,13 @@ function DailyCoach() {
   useEffect(() => {
     fetchBriefing()
   }, [selectedDate])
+
+  // Fetch practice items for tasks when briefing loads
+  useEffect(() => {
+    if (briefing && briefing.tasks) {
+      fetchPracticeItemsForTasks(briefing.tasks.map(t => t.id))
+    }
+  }, [briefing])
 
   // Pomodoro timer effect
   useEffect(() => {
@@ -185,6 +196,80 @@ function DailyCoach() {
       alert(err.response?.data?.detail || 'Failed to enrich tasks')
     } finally {
       setEnriching(false)
+    }
+  }
+
+  // Phase 7: Practice Items Functions
+  const fetchPracticeItemsForTasks = async (taskIds) => {
+    try {
+      const itemsByTask = {}
+      for (const taskId of taskIds) {
+        try {
+          const response = await axios.get(`/api/v1/practice/items/task/${taskId}`)
+          itemsByTask[taskId] = response.data
+        } catch (err) {
+          // Task might not have practice items yet
+          itemsByTask[taskId] = []
+        }
+      }
+      setPracticeItems(itemsByTask)
+    } catch (err) {
+      console.error('Error fetching practice items:', err)
+    }
+  }
+
+  const generatePracticeItems = async (taskId, practiceType, count = 1) => {
+    setGeneratingPractice(prev => ({ ...prev, [taskId]: practiceType }))
+    try {
+      const response = await axios.post(
+        `/api/v1/practice/items/generate?task_id=${taskId}&practice_type=${practiceType}&count=${count}`
+      )
+      
+      // Update practice items for this task
+      setPracticeItems(prev => ({
+        ...prev,
+        [taskId]: [...(prev[taskId] || []), ...response.data]
+      }))
+      
+      alert(`Successfully generated ${response.data.length} ${practiceType} item(s)!`)
+    } catch (err) {
+      console.error('Error generating practice items:', err)
+      alert(err.response?.data?.detail || 'Failed to generate practice items')
+    } finally {
+      setGeneratingPractice(prev => {
+        const next = { ...prev }
+        delete next[taskId]
+        return next
+      })
+    }
+  }
+
+  const submitPracticeAttempt = async (practiceItemId, answer, timeSpentSeconds = null, taskId = null) => {
+    try {
+      // Get task_id from parameter (passed from modal) or from selectedPracticeItem if available
+      const finalTaskId = taskId || null
+      
+      const response = await axios.post('/api/v1/practice/attempts/submit', {
+        practice_item_id: practiceItemId,
+        user_id: TEST_USER_ID,
+        answer: answer,
+        time_spent_seconds: timeSpentSeconds,
+        task_id: finalTaskId
+      })
+      
+      alert('Practice attempt submitted! (Evaluation will happen in Phase 8)')
+      setSelectedPracticeItem(null)
+      setPracticeAnswers(prev => {
+        const next = { ...prev }
+        delete next[practiceItemId]
+        return next
+      })
+      
+      return response.data
+    } catch (err) {
+      console.error('Error submitting practice attempt:', err)
+      alert(err.response?.data?.detail || 'Failed to submit practice attempt')
+      throw err
     }
   }
 
@@ -598,6 +683,11 @@ function DailyCoach() {
                   onComplete={() => completeTask(task.id)}
                   onReschedule={() => openRescheduleModal(task)}
                   onUpdateStatus={(status) => updateTaskStatus(task.id, status)}
+                  practiceItems={practiceItems[task.id] || []}
+                  onGeneratePractice={generatePracticeItems}
+                  generatingPractice={generatingPractice[task.id]}
+                  onViewPractice={setSelectedPracticeItem}
+                  onStartPomodoro={startPomodoro}
                 />
               ))}
             </div>
@@ -618,6 +708,11 @@ function DailyCoach() {
                   onComplete={() => completeTask(task.id)}
                   onReschedule={() => openRescheduleModal(task)}
                   onUpdateStatus={(status) => updateTaskStatus(task.id, status)}
+                  practiceItems={practiceItems[task.id] || []}
+                  onGeneratePractice={generatePracticeItems}
+                  generatingPractice={generatingPractice[task.id]}
+                  onViewPractice={setSelectedPracticeItem}
+                  onStartPomodoro={startPomodoro}
                 />
               ))}
             </div>
@@ -638,6 +733,11 @@ function DailyCoach() {
                   onComplete={() => completeTask(task.id)}
                   onReschedule={() => openRescheduleModal(task)}
                   onUpdateStatus={(status) => updateTaskStatus(task.id, status)}
+                  practiceItems={practiceItems[task.id] || []}
+                  onGeneratePractice={generatePracticeItems}
+                  generatingPractice={generatingPractice[task.id]}
+                  onViewPractice={setSelectedPracticeItem}
+                  onStartPomodoro={startPomodoro}
                 />
               ))}
             </div>
@@ -658,6 +758,11 @@ function DailyCoach() {
                   onComplete={() => completeTask(task.id)}
                   onReschedule={() => openRescheduleModal(task)}
                   onUpdateStatus={(status) => updateTaskStatus(task.id, status)}
+                  practiceItems={practiceItems[task.id] || []}
+                  onGeneratePractice={generatePracticeItems}
+                  generatingPractice={generatingPractice[task.id]}
+                  onViewPractice={setSelectedPracticeItem}
+                  onStartPomodoro={startPomodoro}
                 />
               ))}
             </div>
@@ -741,14 +846,42 @@ function DailyCoach() {
             </div>
           </div>
         )}
+
+        {/* Practice Item Modal - Phase 7 */}
+        {selectedPracticeItem && selectedPracticeItem.id && (
+          <PracticeItemModal
+            key={selectedPracticeItem.id}
+            item={selectedPracticeItem}
+            onClose={() => setSelectedPracticeItem(null)}
+            onSubmit={(practiceItemId, answer, timeSpentSeconds) => {
+              submitPracticeAttempt(practiceItemId, answer, timeSpentSeconds, selectedPracticeItem.task_id)
+            }}
+            answer={practiceAnswers[selectedPracticeItem.id] || ''}
+            onAnswerChange={(answer) => {
+              const itemId = selectedPracticeItem.id
+              setPracticeAnswers(prev => ({ ...prev, [itemId]: answer }))
+            }}
+          />
+        )}
       </div>
     </div>
   )
 }
 
 // Task Card Component
-function TaskCard({ task, onComplete, onReschedule, onUpdateStatus }) {
+function TaskCard({ 
+  task, 
+  onComplete, 
+  onReschedule, 
+  onUpdateStatus,
+  practiceItems = [],
+  onGeneratePractice,
+  generatingPractice = null,
+  onViewPractice,
+  onStartPomodoro
+}) {
   const [expanded, setExpanded] = useState(false)
+  const [showPracticeSection, setShowPracticeSection] = useState(false)
   
   const getStatusColor = (status) => {
     switch (status) {
@@ -876,6 +1009,72 @@ function TaskCard({ task, onComplete, onReschedule, onUpdateStatus }) {
               {studyMaterials.length === 0 && resources.length === 0 && keyConcepts.length === 0 && practiceExercises.length === 0 && (
                 <p className="text-sm text-gray-500 italic">No additional study materials provided for this task.</p>
               )}
+
+              {/* Practice Items Section - Phase 7 */}
+              <div className="mt-4 pt-4 border-t border-gray-300">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-semibold text-gray-900 flex items-center">
+                    <span className="mr-2">🎯</span> Practice Items
+                  </h4>
+                  <button
+                    onClick={() => setShowPracticeSection(!showPracticeSection)}
+                    className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                  >
+                    {showPracticeSection ? '▼ Hide' : '▶ Show'}
+                  </button>
+                </div>
+
+                {showPracticeSection && (
+                  <div className="space-y-3">
+                    {/* Generate Practice Buttons */}
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      <button
+                        onClick={() => onGeneratePractice(task.id, 'quiz', 1)}
+                        disabled={generatingPractice === 'quiz'}
+                        className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:bg-gray-300"
+                      >
+                        {generatingPractice === 'quiz' ? 'Generating...' : '📝 Generate Quiz'}
+                      </button>
+                      <button
+                        onClick={() => onGeneratePractice(task.id, 'flashcard', 2)}
+                        disabled={generatingPractice === 'flashcard'}
+                        className="bg-purple-600 text-white px-3 py-1 rounded text-xs hover:bg-purple-700 disabled:bg-gray-300"
+                      >
+                        {generatingPractice === 'flashcard' ? 'Generating...' : '🃏 Generate Flashcards'}
+                      </button>
+                      <button
+                        onClick={() => onGeneratePractice(task.id, 'behavioral', 1)}
+                        disabled={generatingPractice === 'behavioral'}
+                        className="bg-orange-600 text-white px-3 py-1 rounded text-xs hover:bg-orange-700 disabled:bg-gray-300"
+                      >
+                        {generatingPractice === 'behavioral' ? 'Generating...' : '💬 Generate Behavioral Q'}
+                      </button>
+                      <button
+                        onClick={() => onGeneratePractice(task.id, 'system_design', 1)}
+                        disabled={generatingPractice === 'system_design'}
+                        className="bg-indigo-600 text-white px-3 py-1 rounded text-xs hover:bg-indigo-700 disabled:bg-gray-300"
+                      >
+                        {generatingPractice === 'system_design' ? 'Generating...' : '🏗️ Generate System Design'}
+                      </button>
+                    </div>
+
+                    {/* Display Practice Items */}
+                    {practiceItems.length === 0 ? (
+                      <p className="text-sm text-gray-500 italic">No practice items yet. Generate some above!</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {practiceItems.map((item) => (
+                          <PracticeItemCard
+                            key={item.id}
+                            item={item}
+                            onView={() => onViewPractice(item)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -895,7 +1094,7 @@ function TaskCard({ task, onComplete, onReschedule, onUpdateStatus }) {
             <>
               <button
                 onClick={() => {
-                  startPomodoro(task.id)
+                  if (onStartPomodoro) onStartPomodoro(task.id)
                   onUpdateStatus('in_progress')
                 }}
                 className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
@@ -930,6 +1129,405 @@ function TaskCard({ task, onComplete, onReschedule, onUpdateStatus }) {
                 Skip
               </button>
             </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Practice Item Card Component (shows in task card)
+function PracticeItemCard({ item, onView }) {
+  const getTypeIcon = (type) => {
+    switch (type) {
+      case 'quiz': return '📝'
+      case 'flashcard': return '🃏'
+      case 'behavioral': return '💬'
+      case 'system_design': return '🏗️'
+      default: return '📋'
+    }
+  }
+
+  const getTypeColor = (type) => {
+    switch (type) {
+      case 'quiz': return 'bg-blue-100 text-blue-800'
+      case 'flashcard': return 'bg-purple-100 text-purple-800'
+      case 'behavioral': return 'bg-orange-100 text-orange-800'
+      case 'system_design': return 'bg-indigo-100 text-indigo-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  return (
+    <div className="border border-gray-300 rounded p-2 bg-white hover:shadow-sm transition-shadow">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 flex-1">
+          <span className="text-lg">{getTypeIcon(item.practice_type)}</span>
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-sm text-gray-900 truncate">{item.title}</p>
+            <p className="text-xs text-gray-600 truncate">{item.question.substring(0, 60)}...</p>
+          </div>
+          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${getTypeColor(item.practice_type)}`}>
+            {item.difficulty}
+          </span>
+        </div>
+        <button
+          onClick={() => onView(item)}
+          className="ml-2 bg-primary-600 text-white px-3 py-1 rounded text-xs hover:bg-primary-700"
+        >
+          View
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Practice Item Modal Component (for taking quizzes, viewing flashcards, etc.)
+function PracticeItemModal({ item, onClose, onSubmit, answer, onAnswerChange }) {
+  const [submitting, setSubmitting] = useState(false)
+  const [startTime] = useState(Date.now())
+
+  const handleSubmit = async (overrideAnswer = null) => {
+    const answerToSubmit = overrideAnswer !== null ? overrideAnswer : answer
+    if (!answerToSubmit || !answerToSubmit.trim()) {
+      alert('Please provide an answer')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const timeSpent = Math.floor((Date.now() - startTime) / 1000)
+      await onSubmit(item.id, answerToSubmit, timeSpent, item.task_id)
+    } catch (err) {
+      // Error already handled in parent
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const renderQuiz = () => {
+    const options = item.content?.options || []
+    const isMCQ = options.length > 0
+
+    return (
+      <div className="space-y-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h3 className="font-semibold text-gray-900 mb-2">Question:</h3>
+          <p className="text-gray-700">{item.question}</p>
+        </div>
+
+        {isMCQ ? (
+          <div className="space-y-2">
+            <p className="font-semibold text-gray-900">Select your answer:</p>
+            {options.map((option, idx) => {
+              const optionLabel = String.fromCharCode(65 + idx) // A, B, C, D
+              return (
+                <label
+                  key={idx}
+                  className={`flex items-center p-3 border-2 rounded-lg cursor-pointer transition-colors ${
+                    answer === optionLabel
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="quiz-answer"
+                    value={optionLabel}
+                    checked={answer === optionLabel}
+                    onChange={(e) => onAnswerChange(e.target.value)}
+                    className="mr-3"
+                  />
+                  <span className="font-semibold text-gray-700 mr-2">{optionLabel}.</span>
+                  <span className="text-gray-700">{option}</span>
+                </label>
+              )
+            })}
+          </div>
+        ) : (
+          <div>
+            <label className="block font-semibold text-gray-900 mb-2">Your answer:</label>
+            <textarea
+              value={answer}
+              onChange={(e) => onAnswerChange(e.target.value)}
+              placeholder="Type your answer here..."
+              className="w-full border border-gray-300 rounded-lg p-3 min-h-[150px] focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+            {item.content?.key_points && item.content.key_points.length > 0 && (
+              <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-sm font-semibold text-gray-900 mb-1">Key points to include:</p>
+                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
+                  {item.content.key_points.map((point, idx) => (
+                    <li key={idx}>{point}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderFlashcard = () => {
+    const [showAnswer, setShowAnswer] = useState(false)
+
+    return (
+      <div className="space-y-4">
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-6 min-h-[200px] flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-lg font-semibold text-gray-900 mb-2">Front:</p>
+            <p className="text-xl text-gray-700">{item.question}</p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setShowAnswer(!showAnswer)}
+          className="w-full bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 font-semibold"
+        >
+          {showAnswer ? 'Hide Answer' : 'Show Answer'}
+        </button>
+
+        {showAnswer && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+            <p className="text-lg font-semibold text-gray-900 mb-2">Back:</p>
+            <p className="text-xl text-gray-700">{item.content?.back || item.expected_answer}</p>
+          </div>
+        )}
+
+        <div className="mt-4">
+          <label className="block font-semibold text-gray-900 mb-2">Did you get it right?</label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                onAnswerChange('correct')
+                handleSubmit('correct')
+              }}
+              disabled={submitting}
+              className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-300"
+            >
+              ✓ Correct
+            </button>
+            <button
+              onClick={() => {
+                onAnswerChange('incorrect')
+                handleSubmit('incorrect')
+              }}
+              disabled={submitting}
+              className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:bg-gray-300"
+            >
+              ✗ Incorrect
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderBehavioral = () => {
+    const starGuidance = item.content?.star_guidance || {}
+    const criteria = item.content?.evaluation_criteria || []
+
+    return (
+      <div className="space-y-4">
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+          <h3 className="font-semibold text-gray-900 mb-2">Question:</h3>
+          <p className="text-gray-700 text-lg">{item.question}</p>
+        </div>
+
+        {starGuidance && Object.keys(starGuidance).length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-900 mb-3">STAR Method Guidance:</h4>
+            <div className="space-y-2 text-sm">
+              {starGuidance.situation && (
+                <div>
+                  <span className="font-semibold text-gray-900">Situation:</span>
+                  <p className="text-gray-700 ml-2">{starGuidance.situation}</p>
+                </div>
+              )}
+              {starGuidance.task && (
+                <div>
+                  <span className="font-semibold text-gray-900">Task:</span>
+                  <p className="text-gray-700 ml-2">{starGuidance.task}</p>
+                </div>
+              )}
+              {starGuidance.action && (
+                <div>
+                  <span className="font-semibold text-gray-900">Action:</span>
+                  <p className="text-gray-700 ml-2">{starGuidance.action}</p>
+                </div>
+              )}
+              {starGuidance.result && (
+                <div>
+                  <span className="font-semibold text-gray-900">Result:</span>
+                  <p className="text-gray-700 ml-2">{starGuidance.result}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {criteria.length > 0 && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-900 mb-2">Evaluation Criteria:</h4>
+            <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+              {criteria.map((criterion, idx) => (
+                <li key={idx}>{criterion}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div>
+          <label className="block font-semibold text-gray-900 mb-2">Your STAR response:</label>
+          <textarea
+            value={answer}
+            onChange={(e) => onAnswerChange(e.target.value)}
+            placeholder="Describe the Situation, Task, Action, and Result..."
+            className="w-full border border-gray-300 rounded-lg p-3 min-h-[200px] focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          />
+        </div>
+      </div>
+    )
+  }
+
+  const renderSystemDesign = () => {
+    const requirements = item.content?.requirements || []
+    const constraints = item.content?.constraints || []
+    const framework = item.content?.evaluation_framework || {}
+
+    return (
+      <div className="space-y-4">
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+          <h3 className="font-semibold text-gray-900 mb-2">Challenge:</h3>
+          <p className="text-gray-700 text-lg">{item.question}</p>
+        </div>
+
+        {requirements.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-900 mb-2">Requirements:</h4>
+            <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+              {requirements.map((req, idx) => (
+                <li key={idx}>{req}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {constraints.length > 0 && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-900 mb-2">Constraints:</h4>
+            <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+              {constraints.map((constraint, idx) => (
+                <li key={idx}>{constraint}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {framework && Object.keys(framework).length > 0 && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-900 mb-2">Evaluation Framework:</h4>
+            <div className="space-y-2 text-sm">
+              {framework.functional_requirements && (
+                <div>
+                  <span className="font-semibold">Functional:</span>
+                  <ul className="list-disc list-inside ml-2 text-gray-700">
+                    {framework.functional_requirements.map((req, idx) => (
+                      <li key={idx}>{req}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {framework.non_functional_requirements && (
+                <div>
+                  <span className="font-semibold">Non-functional:</span>
+                  <ul className="list-disc list-inside ml-2 text-gray-700">
+                    {framework.non_functional_requirements.map((req, idx) => (
+                      <li key={idx}>{req}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <label className="block font-semibold text-gray-900 mb-2">Your system design:</label>
+          <textarea
+            value={answer}
+            onChange={(e) => onAnswerChange(e.target.value)}
+            placeholder="Describe your system architecture, components, data flow, and trade-offs..."
+            className="w-full border border-gray-300 rounded-lg p-3 min-h-[250px] focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          />
+        </div>
+      </div>
+    )
+  }
+
+  const renderContent = () => {
+    switch (item.practice_type) {
+      case 'quiz':
+        return renderQuiz()
+      case 'flashcard':
+        return renderFlashcard()
+      case 'behavioral':
+        return renderBehavioral()
+      case 'system_design':
+        return renderSystemDesign()
+      default:
+        return <p className="text-gray-700">{item.question}</p>
+    }
+  }
+
+  const getTypeTitle = () => {
+    switch (item.practice_type) {
+      case 'quiz': return 'Quiz'
+      case 'flashcard': return 'Flashcard'
+      case 'behavioral': return 'Behavioral Interview Question'
+      case 'system_design': return 'System Design Challenge'
+      default: return 'Practice Item'
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">{item.title}</h2>
+            <p className="text-sm text-gray-600">
+              {getTypeTitle()} • {item.difficulty} • {item.skill_names?.join(', ') || 'General'}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="p-6">
+          {renderContent()}
+
+          {item.practice_type !== 'flashcard' && (
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={handleSubmit}
+                disabled={submitting || !answer.trim()}
+                className="flex-1 bg-primary-600 text-white px-4 py-3 rounded-lg hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-semibold"
+              >
+                {submitting ? 'Submitting...' : 'Submit Answer'}
+              </button>
+              <button
+                onClick={onClose}
+                className="bg-gray-300 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold"
+              >
+                Cancel
+              </button>
+            </div>
           )}
         </div>
       </div>

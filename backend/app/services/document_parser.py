@@ -256,3 +256,4 @@ def get_upload_path(user_id: int, file_name: str) -> Path:
     user_dir.mkdir(parents=True, exist_ok=True)
     return user_dir / safe_name
 
+

@@ -42,6 +42,7 @@ class PracticeItemCreate(PracticeItemBase):
 class PracticeItemResponse(PracticeItemBase):
     """Schema for practice item response."""
     id: int
+    task_id: Optional[int] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -134,3 +134,4 @@ def add_missing_weeks(db, plan, existing_week_nums):
 if __name__ == "__main__":
     check_and_fix_weeks()
 
+
