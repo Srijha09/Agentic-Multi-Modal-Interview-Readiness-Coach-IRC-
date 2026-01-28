@@ -24,7 +24,7 @@ dependencies:
     - langgraph==0.0.20
     
     # Vector stores
-    - faiss-cpu==1.7.4
+    - faiss-cpu==1.13.2
     - chromadb==0.4.18
     
     # Document processing
