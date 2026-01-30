@@ -1,3 +1,9 @@
+// at top of Upload.jsx
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+const api = axios.create({ baseURL: API_BASE_URL })
+
+
+
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 
@@ -48,7 +54,8 @@ function Upload() {
         formData.append('document_type', 'resume')
         formData.append('user_id', TEST_USER_ID.toString())
 
-        const response = await axios.post('/api/v1/documents/upload', formData)
+        // then replace axios.post(...) with:
+        const response = await api.post('/api/v1/documents/upload', formData)
         resumeDocId = response.data.id
         
         setUploadResult(prev => ({
@@ -69,7 +76,7 @@ function Upload() {
         formData.append('document_type', 'job_description')
         formData.append('user_id', TEST_USER_ID.toString())
 
-        const response = await axios.post('/api/v1/documents/upload', formData)
+        const response = await api.post('/api/v1/documents/upload', formData)
         jdDocId = response.data.id
         
         setUploadResult(prev => ({
@@ -126,7 +133,7 @@ function Upload() {
       console.log('Starting gap analysis:', { resumeDocId, jdDocId, userId: TEST_USER_ID })
       
       // Use query parameters for the POST request
-      const response = await axios.post(
+      const response = await api.post(
         `/api/v1/gaps/analyze?user_id=${TEST_USER_ID}&resume_document_id=${resumeDocId}&jd_document_id=${jdDocId}`
       )
       
@@ -172,7 +179,7 @@ function Upload() {
     try {
       console.log('Generating study plan:', { userId: TEST_USER_ID, weeks, hoursPerWeek })
       
-      const response = await axios.post(
+      const response = await api.post(
         `/api/v1/plans/generate?user_id=${TEST_USER_ID}&weeks=${weeks}&hours_per_week=${hoursPerWeek}`
       )
       
