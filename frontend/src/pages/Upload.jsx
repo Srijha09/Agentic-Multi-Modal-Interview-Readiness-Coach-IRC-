@@ -22,7 +22,7 @@ function Upload() {
   const progressIntervalRef = useRef(null)
   
   // For testing - use the user_id from create_test_user.py (typically 1)
-  const TEST_USER_ID = 3
+  const TEST_USER_ID = 1
   
   // Cleanup interval on unmount
   useEffect(() => {
