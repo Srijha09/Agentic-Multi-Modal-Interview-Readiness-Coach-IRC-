@@ -1,7 +1,5 @@
-import { Link } from 'react-router-dom'
-import { useState } from 'react'
-
-import api from '../api/client.js'
+import { useState, useEffect, useRef } from 'react'
+import axios from 'axios'
 
 function Upload() {
   const [resumeFile, setResumeFile] = useState(null)
@@ -10,110 +8,186 @@ function Upload() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [statusLabel, setStatusLabel] = useState('')
   const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
-  const [results, setResults] = useState(null)
+  const [uploadResult, setUploadResult] = useState(null)
+  const [gapReport, setGapReport] = useState(null)
+  const [studyPlan, setStudyPlan] = useState(null)
+  const [generatingPlan, setGeneratingPlan] = useState(false)
+  const progressIntervalRef = useRef(null)
+  
+  // For testing - use the user_id from create_test_user.py (typically 1)
+  const TEST_USER_ID = 1
+  
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current)
+      }
+    }
+  }, [])
 
-  const uploadDocument = async ({ file, documentType, userIdValue }) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('document_type', documentType)
-    formData.append('user_id', String(userIdValue))
-
-    const response = await api.post('/api/v1/documents/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-
-    return response.data
+  const handleResumeChange = (e) => {
+    setResumeFile(e.target.files[0])
   }
 
   const handleSubmit = async (event) => {
     event.preventDefault()
     setMessage('')
-    setError('')
-    setResults(null)
-    setStatusLabel('')
-
-    if (!resumeFile) {
-      setError('Please upload a resume file.')
-      return
-    }
-
-    setIsSubmitting(true)
-    setStatusLabel('Uploading resume…')
+    setUploadResult(null)
 
     try {
-      const resumeResponse = await uploadDocument({
-        file: resumeFile,
-        documentType: 'resume',
-        userIdValue: userId,
-      })
+      let resumeDocId = null
+      let jdDocId = null
+      
+      // Upload resume if provided
+      if (resumeFile) {
+        const formData = new FormData()
+        formData.append('file', resumeFile)
+        formData.append('document_type', 'resume')
+        formData.append('user_id', TEST_USER_ID.toString())
 
-      let jobResponse = null
-      const trimmedJob = jobDescription.trim()
-      if (trimmedJob) {
-        setStatusLabel('Uploading job description…')
-        const jobFile = new File([trimmedJob], 'job_description.txt', {
-          type: 'text/plain',
-        })
-        jobResponse = await uploadDocument({
-          file: jobFile,
-          documentType: 'job_description',
-          userIdValue: userId,
-        })
+        const response = await axios.post('/api/v1/documents/upload', formData)
+        resumeDocId = response.data.id
+        
+        setUploadResult(prev => ({
+          ...prev,
+          data: response.data
+        }))
+        setMessage(`✓ Resume uploaded successfully! Document ID: ${response.data.id}`)
       }
 
-      const resumeId = resumeResponse?.id ?? resumeResponse?.document_id
-      const jobId = jobResponse?.id ?? jobResponse?.document_id
+      // Handle job description text
+      if (jobDescription.trim()) {
+        // Convert text to a Blob and upload as file
+        const blob = new Blob([jobDescription], { type: 'text/plain' })
+        const jdFile = new File([blob], 'job_description.txt', { type: 'text/plain' })
+        
+        const formData = new FormData()
+        formData.append('file', jdFile)
+        formData.append('document_type', 'job_description')
+        formData.append('user_id', TEST_USER_ID.toString())
 
-      const statusParts = [`Resume uploaded (ID: ${resumeId}).`]
-      if (jobResponse) {
-        statusParts.push(`Job description uploaded (ID: ${jobId}).`)
-      }
-
-      setResults({
-        resume: resumeResponse,
-        jobDescription: jobResponse,
-      })
-      setMessage(statusParts.join(' '))
-
-      if (jobId) {
-        setStatusLabel(
-          'Running LangGraph onboarding (gap analysis + study plan). This usually takes 3–6 minutes…',
-        )
-        const onboarding = await api.post('/api/v1/graph/onboarding', null, {
-          params: {
-            user_id: userId,
-            resume_document_id: resumeId,
-            jd_document_id: jobId,
-            weeks: 4,
-            hours_per_week: 10,
-            generate_plan: true,
-          },
-        })
-        const planId = onboarding.data?.study_plan_id
-        const gapCount = onboarding.data?.gap_count ?? 0
-        setResults((prev) => ({ ...prev, onboarding }))
-        setMessage(
-          planId
-            ? `Done! ${gapCount} skill gaps identified. Study plan #${planId} created.`
-            : `Done! ${gapCount} skill gaps identified (plan generation skipped or failed).`,
-        )
-        setStatusLabel('')
-      } else {
-        setStatusLabel('')
-        setMessage((prev) =>
-          `${prev} Add a job description to run gap analysis and planning.`,
+        const response = await axios.post('/api/v1/documents/upload', formData)
+        jdDocId = response.data.id
+        
+        setUploadResult(prev => ({
+          ...prev,
+          jd: response.data
+        }))
+        setMessage(prev => prev 
+          ? `${prev}\n✓ Job description uploaded! Document ID: ${response.data.id}`
+          : `✓ Job description uploaded! Document ID: ${response.data.id}`
         )
       }
-    } catch (submitError) {
-      const detail = submitError?.response?.data?.detail
-      const isTimeout = submitError?.code === 'ECONNABORTED'
-      setError(
-        isTimeout
-          ? 'Request timed out. The backend may still be working—check the terminal, then refresh or try again.'
-          : detail || submitError?.message || 'Upload failed. Please try again.',
+
+      if (!resumeFile && !jobDescription.trim()) {
+        setMessage('Please upload a resume or enter a job description.')
+      }
+
+      setUploading(false)
+      
+      // Automatically trigger gap analysis if both documents are uploaded
+      if (resumeDocId && jdDocId) {
+        await analyzeGaps(resumeDocId, jdDocId)
+      }
+    } catch (error) {
+      console.error('Upload error:', error)
+      setMessage(
+        error.response?.data?.detail || 
+        error.message || 
+        'Error uploading file. Please try again.'
       )
-      setStatusLabel('')
+      setUploading(false)
+    }
+  }
+
+  const analyzeGaps = async (resumeDocId, jdDocId) => {
+    const startTime = Date.now()
+    setAnalyzing(true)
+    setAnalysisProgress(0)
+    setAnalysisStartTime(startTime)
+    setMessage(prev => prev + '\n\n⏳ Analyzing skill gaps... This may take a minute.')
+    
+    // Simulate progress (since we can't track real progress from backend)
+    // Estimate: 60 seconds total, update every 500ms
+    progressIntervalRef.current = setInterval(() => {
+      setAnalysisProgress(prev => {
+        // Gradually increase progress, but cap at 90% until we get response
+        const elapsed = (Date.now() - startTime) / 1000
+        const estimatedTotal = 60 // 60 seconds estimated
+        const progress = Math.min((elapsed / estimatedTotal) * 90, 90)
+        return Math.floor(progress)
+      })
+    }, 500)
+    
+    try {
+      console.log('Starting gap analysis:', { resumeDocId, jdDocId, userId: TEST_USER_ID })
+      
+      // Use query parameters for the POST request
+      const response = await axios.post(
+        `/api/v1/gaps/analyze?user_id=${TEST_USER_ID}&resume_document_id=${resumeDocId}&jd_document_id=${jdDocId}`
+      )
+      
+      console.log('Gap analysis response:', response.data)
+      
+      // Complete the progress bar
+      setAnalysisProgress(100)
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current)
+        progressIntervalRef.current = null
+      }
+      
+      // Small delay to show 100% before hiding
+      setTimeout(() => {
+        setGapReport(response.data)
+        setMessage(prev => {
+          const base = prev.split('\n\n')[0] // Keep original upload messages
+          return `${base}\n\n✓ Gap analysis complete! Found ${response.data.total_gaps} skill gaps (${response.data.critical_gaps} critical, ${response.data.high_priority_gaps} high priority).`
+        })
+        setAnalyzing(false)
+      }, 500)
+    } catch (error) {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current)
+        progressIntervalRef.current = null
+      }
+      console.error('Gap analysis error:', error)
+      console.error('Error response:', error.response)
+      const errorMsg = error.response?.data?.detail || error.message || 'Unknown error'
+      setMessage(prev => {
+        const base = prev.split('\n\n')[0] // Keep original upload messages
+        return `${base}\n\n✗ Error analyzing gaps: ${errorMsg}\n\nPlease check:\n1. LLM API key is set in backend .env\n2. Backend server is running\n3. Check browser console (F12) for details`
+      })
+      setAnalyzing(false)
+      setAnalysisProgress(0)
+    }
+  }
+
+  const generateStudyPlan = async (weeks, hoursPerWeek) => {
+    setGeneratingPlan(true)
+    setMessage(prev => prev + `\n\n📅 Generating ${weeks}-week study plan...`)
+    
+    try {
+      console.log('Generating study plan:', { userId: TEST_USER_ID, weeks, hoursPerWeek })
+      
+      const response = await axios.post(
+        `/api/v1/plans/generate?user_id=${TEST_USER_ID}&weeks=${weeks}&hours_per_week=${hoursPerWeek}`
+      )
+      
+      console.log('Study plan response:', response.data)
+      
+      setStudyPlan(response.data)
+      setMessage(prev => {
+        const base = prev.split('\n\n')[0]
+        return `${base}\n\n✓ Study plan generated! ${weeks} weeks with ${hoursPerWeek}h/week.`
+      })
+    } catch (error) {
+      console.error('Plan generation error:', error)
+      const errorMsg = error.response?.data?.detail || error.message || 'Unknown error'
+      setMessage(prev => {
+        const base = prev.split('\n\n')[0]
+        return `${base}\n\n✗ Error generating plan: ${errorMsg}`
+      })
     } finally {
       setIsSubmitting(false)
     }

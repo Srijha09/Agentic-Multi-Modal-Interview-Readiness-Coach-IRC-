@@ -275,3 +275,283 @@ flowchart LR
 - Automatic reinforcement scheduling
 - Reduction of repetition for mastered topics
 
+---
+
+## Quick Start
+
+### Prerequisites
+- **Conda** (Miniconda or Anaconda)
+- **Node.js** 18+ (installed via conda)
+- **Python** 3.11 (installed via conda)
+- **LLM API Key** (OpenAI, Anthropic, or Ollama)
+
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd Agentic-Multi-Modal-Interview-Readiness-Coach-IRC-
+   ```
+
+2. **Create and activate conda environment:**
+   ```bash
+   conda env create -f environment.yml
+   conda activate irc-coach
+   ```
+
+3. **Configure environment variables:**
+   ```bash
+   cp backend/.env.example backend/.env
+   # Edit backend/.env and set OPENAI_API_KEY (or ANTHROPIC_API_KEY)
+   ```
+
+4. **Initialize database:**
+   ```bash
+   cd backend
+   python -m scripts.init_db
+   ```
+
+5. **Install frontend dependencies:**
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+### Running the Application
+
+**Terminal 1 - Backend:**
+```bash
+conda activate irc-coach
+cd backend
+uvicorn main:app --reload --port 8000
+```
+
+**Terminal 2 - Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+
+**Access the application:**
+- Frontend: http://localhost:5173
+- API Docs: http://localhost:8000/docs
+- API: http://localhost:8000
+
+### Using Make Commands
+
+Alternatively, use the Makefile:
+```bash
+make backend    # Start backend server
+make frontend   # Start frontend server
+```
+
+---
+
+## Documentation
+
+- **[SETUP.md](SETUP.md)** - Detailed setup instructions
+- **[assets/Phases/DEMO_SCRIPT.md](assets/Phases/DEMO_SCRIPT.md)** - Demo script for showcasing the system
+- **[FUTURE_SCOPE.md](FUTURE_SCOPE.md)** - Known limitations and future improvements
+
+---
+
+## Usage Guide
+
+### 1. Upload Documents
+
+1. Navigate to the **Upload** page
+2. Upload your resume (PDF or DOCX)
+3. Upload or paste the job description
+4. Click "Upload Documents"
+
+### 2. Analyze Skill Gaps
+
+1. Go to the **Dashboard**
+2. Click "View Gap Analysis"
+3. Review identified skill gaps with priorities
+
+### 3. Generate Study Plan
+
+1. From the Dashboard, click "Generate Study Plan"
+2. Enter:
+   - Interview date
+   - Hours per week available
+3. Click "Generate"
+4. Review the multi-week plan
+
+### 4. Daily Practice
+
+1. Go to **Daily Coach** page
+2. View today's tasks
+3. Click "View Study Materials" on a task
+4. Click "Generate Practice" → Select type
+5. Complete practice items and submit
+6. Review evaluation feedback
+
+### 5. Track Progress
+
+1. View **Dashboard** for:
+   - Skill mastery overview
+   - Adaptive plan recommendations
+   - System metrics
+2. Export calendar for accountability
+
+---
+
+## API Endpoints
+
+### Core Endpoints
+
+- `POST /api/v1/documents/upload` - Upload resume and job description
+- `POST /api/v1/gaps/analyze` - Analyze skill gaps
+- `POST /api/v1/plans/generate` - Generate study plan
+- `GET /api/v1/coach/daily/{date}` - Get daily briefing
+- `POST /api/v1/practice/generate` - Generate practice items
+- `POST /api/v1/practice/attempts/submit` - Submit practice attempt
+- `GET /api/v1/mastery/stats` - Get mastery statistics
+- `POST /api/v1/adaptive/analyze` - Analyze adaptation needs
+- `GET /api/v1/calendar/ics` - Export calendar (ICS)
+
+### Full API Documentation
+
+Visit http://localhost:8000/docs for interactive Swagger documentation.
+
+---
+
+## Testing
+
+### Integration Tests
+
+Run the integration test suite:
+```bash
+cd backend
+pytest tests/test_integration.py -v
+```
+
+### Manual Testing
+
+See [assets/Phases/DEMO_SCRIPT.md](assets/Phases/DEMO_SCRIPT.md) for step-by-step testing instructions.
+
+---
+
+## Development
+
+### Project Structure
+
+```
+.
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/endpoints/    # API endpoints
+│   │   ├── core/                # Configuration, LLM
+│   │   ├── db/                   # Database models
+│   │   ├── schemas/              # Pydantic schemas
+│   │   └── services/             # Business logic
+│   ├── tests/                    # Integration tests
+│   └── scripts/                  # Utility scripts
+├── frontend/
+│   ├── src/
+│   │   ├── pages/                # Page components
+│   │   ├── components/           # Reusable components
+│   │   └── App.jsx               # Main app
+│   └── public/                   # Static assets
+└── docs/                         # Documentation
+```
+
+### Adding New Features
+
+1. **Backend:**
+   - Add service in `app/services/`
+   - Create API endpoint in `app/api/v1/endpoints/`
+   - Add schema in `app/schemas/`
+   - Update router in `app/api/v1/router.py`
+
+2. **Frontend:**
+   - Create page in `frontend/src/pages/`
+   - Add route in `frontend/src/App.jsx`
+   - Update navigation if needed
+
+---
+
+## Configuration
+
+### Environment Variables
+
+Create a `backend/.env` file (see `backend/.env.example`):
+
+```bash
+# LLM Provider (choose one)
+OPENAI_API_KEY=your_key_here
+# OR
+ANTHROPIC_API_KEY=your_key_here
+# OR (for local LLM)
+OLLAMA_BASE_URL=http://localhost:11434
+
+# Database (optional, defaults to SQLite)
+DATABASE_URL=sqlite:///./irc_coach.db
+# For PostgreSQL:
+# DATABASE_URL=postgresql://user:password@localhost:5432/irc_coach
+
+# Observability (optional)
+LANGSMITH_API_KEY=your_key_here
+LANGSMITH_PROJECT=irc-coach
+LANGSMITH_TRACING=true
+
+# CORS (optional)
+CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+```
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**Backend won't start:**
+- Ensure conda environment is activated
+- Check API keys are set in `.env`
+- Verify port 8000 is not in use
+
+**Frontend won't load:**
+- Run `npm install` in `frontend/` directory
+- Check Node.js version (18+)
+- Verify port 5173 is not in use
+
+**Database errors:**
+- Run `python -m scripts.init_db` to recreate tables
+- Check `.env` has correct `DATABASE_URL`
+- Ensure database file/directory is writable
+
+**LLM errors:**
+- Verify API key is correct
+- Check API quota/limits
+- For Ollama, ensure service is running
+
+See [FUTURE_SCOPE.md](FUTURE_SCOPE.md) for more details.
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+---
+
+## License
+
+See [LICENSE](LICENSE) file for details.
+
+---
+
+## Acknowledgments
+
+- Built with [LangChain](https://www.langchain.com/) and [LangGraph](https://github.com/langchain-ai/langgraph)
+- UI built with [React](https://react.dev/) and [Tailwind CSS](https://tailwindcss.com/)
+- API built with [FastAPI](https://fastapi.tiangolo.com/)
+
+---
+**Version:** 1.0.0
