@@ -18,8 +18,7 @@ from app.db.models import (
     SkillEvidence,
 )
 from app.schemas.skill import GapResponse, GapReportResponse, SkillEvidenceResponse
-from app.services.gap_analysis import GapAnalyzer
-from app.services.skill_extraction import SkillExtractor
+from app.graph.runner import get_graph_runner
 from app.core.serializers import skill_evidence_to_response
 
 router = APIRouter()
@@ -71,94 +70,40 @@ async def analyze_gaps(
             detail=f"Job description document {jd_document_id} not found for user {user_id}"
         )
     
-    # Check if gaps already exist for this user
-    existing_gaps = db.query(Gap).filter(
-        Gap.user_id == user_id
-    ).all()
-    
-    # Delete existing gaps if any (fresh analysis)
-    if existing_gaps:
-        for gap in existing_gaps:
-            db.delete(gap)
-        db.commit()
-    
-    # Perform gap analysis
+    # Run gap analysis via LangGraph orchestration
     try:
-        analyzer = GapAnalyzer()
-        gaps = analyzer.analyze_gaps(
+        runner = get_graph_runner()
+        graph_result = runner.run_gap_analysis(
+            db=db,
             user_id=user_id,
-            resume_document=resume_doc,
-            jd_document=jd_doc,
-            db_session=db
+            resume_document_id=resume_document_id,
+            jd_document_id=jd_document_id,
         )
     except ValueError as e:
-        # LLM configuration error
         if "API_KEY" in str(e) or "not set" in str(e):
             raise HTTPException(
                 status_code=500,
-                detail=f"LLM configuration error: {str(e)}. Please set OPENAI_API_KEY in your .env file."
+                detail=f"LLM configuration error: {str(e)}. Please set OPENAI_API_KEY in your .env file.",
             )
         raise HTTPException(status_code=500, detail=f"Configuration error: {str(e)}")
     except Exception as e:
-        # Log the full error for debugging
         import traceback
         logger.error(f"Gap analysis error: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error during gap analysis: {str(e)}. Check backend logs for details."
+            detail=f"Error during gap analysis: {str(e)}. Check backend logs for details.",
         )
-    
-    # Store gaps in database
-    for gap in gaps:
-        db.add(gap)
-    
-    # Also extract and store skill evidence
-    skill_extractor = SkillExtractor()
-    
-    # Extract skills from resume and store evidence
-    resume_skills = skill_extractor.extract_skills_from_document(
-        resume_doc,
-        resume_doc.content or ""
-    )
-    
-    for extracted_skill in resume_skills.skills:
-        # Get or create skill
-        from app.db.models import Skill
-        from app.schemas.skill import SkillCategory
-        
-        try:
-            skill_category = SkillCategory(extracted_skill.category.lower())
-        except ValueError:
-            skill_category = SkillCategory.OTHER
-        
-        skill = db.query(Skill).filter(
-            Skill.name.ilike(extracted_skill.name)
-        ).first()
-        
-        if not skill:
-            skill = Skill(
-                name=extracted_skill.name,
-                category=skill_category,
-                description=None
+
+    if graph_result.get("error"):
+        detail = graph_result["error"]
+        if "API_KEY" in detail or "not set" in detail:
+            raise HTTPException(
+                status_code=500,
+                detail=f"LLM configuration error: {detail}. Please set OPENAI_API_KEY in your .env file.",
             )
-            db.add(skill)
-            db.flush()
-        
-        # Create evidence
-        evidence = SkillEvidence(
-            skill_id=skill.id,
-            document_id=resume_doc.id,
-            evidence_text=extracted_skill.evidence,
-            section_name=extracted_skill.section_name,
-            confidence_score=extracted_skill.confidence,
-        )
-        db.add(evidence)
-    
-    db.commit()
-    
-    # Refresh gaps to get IDs
-    for gap in gaps:
-        db.refresh(gap)
+        raise HTTPException(status_code=500, detail=detail)
+
+    gaps = graph_result.get("gaps") or []
     
     # Get all gaps with relationships
     all_gaps = db.query(Gap).filter(

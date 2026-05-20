@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     LLM_PROVIDER: str = "openai"  # openai, anthropic, ollama
-    LLM_MODEL: str = "gpt-4-turbo-preview"
+    LLM_MODEL: str = "gpt-4o-mini"
     
     # Ollama (if using local LLM)
     OLLAMA_BASE_URL: str = "http://localhost:11434"

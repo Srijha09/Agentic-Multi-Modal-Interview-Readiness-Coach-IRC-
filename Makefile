@@ -18,7 +18,7 @@ setup:
 
 backend:
 	@echo "Starting backend server..."
-	cd backend && uvicorn main:app --reload --port 8000 --log-config "" --reload-exclude "scripts/*"
+	cd backend && uvicorn main:app --reload --port 8000
 
 frontend:
 	@echo "Starting frontend dev server..."

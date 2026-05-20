@@ -15,14 +15,11 @@ from app.schemas.practice import (
     PracticeAttemptResponse
 )
 from app.schemas.evaluation import EvaluationResponse
-from app.services.practice_generator import PracticeGenerator
+from app.graph.runner import get_graph_runner
 from app.services.evaluator import EvaluationAgent
-from app.services.mastery_tracker import MasteryTracker
 
 router = APIRouter()
-practice_generator = PracticeGenerator()
 evaluator = EvaluationAgent()
-mastery_tracker = MasteryTracker()
 
 
 @router.post("/items/generate", response_model=List[PracticeItemResponse])
@@ -51,18 +48,17 @@ async def generate_practice_items(
             detail=f"Invalid practice type. Must be one of: {[e.value for e in PracticeTypeEnum]}"
         )
     
-    user_id = task.study_plan.user_id
-    
-    practice_items = practice_generator.generate_for_task(
-        task=task,
-        practice_type=practice_type_enum,
-        user_id=user_id,
+    runner = get_graph_runner()
+    graph_result = runner.run_practice_generation(
         db=db,
-        count=count
+        task_id=task_id,
+        practice_type=practice_type,
+        count=count,
     )
-    
-    db.commit()
-    
+    if graph_result.get("error"):
+        raise HTTPException(status_code=500, detail=graph_result["error"])
+
+    practice_items = graph_result.get("practice_items") or []
     return [PracticeItemResponse.model_validate(item) for item in practice_items]
 
 
@@ -143,32 +139,29 @@ async def submit_attempt(
         db.commit()
         db.refresh(attempt)
         
-        # Phase 8: Automatically evaluate the attempt
+        # Phase 8–9: Evaluate + update mastery via LangGraph learning loop
         try:
-            evaluation = evaluator.evaluate_attempt(attempt, db)
-            # Update attempt with evaluation scores
-            attempt.score = evaluation.overall_score
-            attempt.feedback = evaluation.feedback
-            db.commit()
-            db.refresh(attempt)
-            
-            # Phase 9: Update mastery scores based on evaluation
-            try:
-                mastery_tracker.update_mastery_from_evaluation(evaluation, db)
-            except Exception as mastery_error:
-                # Log but don't fail if mastery update fails
+            runner = get_graph_runner()
+            graph_result = runner.run_learning_loop(
+                db=db,
+                attempt=attempt,
+                run_adapt=False,
+            )
+            if graph_result.get("error"):
                 import logging
-                logging.error(f"Mastery update failed for evaluation {evaluation.id}: {mastery_error}")
-            
-            # Reload with evaluation relationship
-            attempt = db.query(PracticeAttempt).options(
-                joinedload(PracticeAttempt.evaluation)
-            ).filter(PracticeAttempt.id == attempt.id).first()
+                logging.error(
+                    "Learning loop error for attempt %s: %s",
+                    attempt.id,
+                    graph_result["error"],
+                )
+            else:
+                attempt = graph_result.get("attempt") or attempt
+                attempt = db.query(PracticeAttempt).options(
+                    joinedload(PracticeAttempt.evaluation)
+                ).filter(PracticeAttempt.id == attempt.id).first()
         except Exception as eval_error:
-            # Log evaluation error but don't fail the submission
             import logging
             logging.error(f"Evaluation failed for attempt {attempt.id}: {eval_error}")
-            # Attempt is still saved, just without evaluation
         
         # Build response with evaluation
         response_data = PracticeAttemptResponse.model_validate(attempt)
@@ -256,30 +249,23 @@ async def evaluate_attempt(
     if existing_eval:
         return EvaluationResponse.model_validate(existing_eval)
     
-        # Create new evaluation
-        try:
-            evaluation = evaluator.evaluate_attempt(attempt, db)
-            # Update attempt with evaluation scores
-            attempt.score = evaluation.overall_score
-            attempt.feedback = evaluation.feedback
-            db.commit()
-            db.refresh(attempt)
-            
-            # Phase 9: Update mastery scores based on evaluation
-            try:
-                mastery_tracker.update_mastery_from_evaluation(evaluation, db)
-            except Exception as mastery_error:
-                # Log but don't fail if mastery update fails
-                import logging
-                logging.error(f"Mastery update failed for evaluation {evaluation.id}: {mastery_error}")
-            
-            return EvaluationResponse.model_validate(evaluation)
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to evaluate attempt: {str(e)}"
-            )
+    try:
+        runner = get_graph_runner()
+        graph_result = runner.run_learning_loop(db=db, attempt=attempt, run_adapt=False)
+        if graph_result.get("error"):
+            raise HTTPException(status_code=500, detail=graph_result["error"])
+        evaluation = graph_result.get("evaluation")
+        if not evaluation:
+            raise HTTPException(status_code=500, detail="Evaluation not produced")
+        return EvaluationResponse.model_validate(evaluation)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to evaluate attempt: {str(e)}",
+        )
 
 
 

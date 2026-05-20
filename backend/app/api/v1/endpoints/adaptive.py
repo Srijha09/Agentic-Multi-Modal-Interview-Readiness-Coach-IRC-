@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.db.models import User, StudyPlan
+from app.graph.runner import get_graph_runner
 from app.services.adaptive_planner import AdaptivePlanner
 
 router = APIRouter()
@@ -97,20 +98,25 @@ async def adapt_study_plan(
         if not study_plan:
             raise HTTPException(status_code=404, detail="No study plan found for user")
         
-        # Adapt plan
-        planner = AdaptivePlanner()
-        result = planner.adapt_plan(
-            user_id, study_plan.id, apply_recommendations, db
+        # Adapt plan via LangGraph adaptive workflow
+        runner = get_graph_runner()
+        graph_result = runner.run_adaptive_planning(
+            db=db,
+            user_id=user_id,
+            study_plan_id=study_plan.id,
+            apply_recommendations=apply_recommendations,
         )
-        
-        db.commit()
-        
+        if graph_result.get("error"):
+            raise HTTPException(status_code=500, detail=graph_result["error"])
+
+        result = graph_result.get("adaptation_result") or {}
         return {
             "study_plan_id": study_plan.id,
             "success": True,
-            "summary": result["summary"],
-            "changes": result["changes"],
-            "analysis": result["analysis"]
+            "summary": result.get("summary"),
+            "changes": result.get("changes"),
+            "analysis": result.get("analysis"),
+            "workflow_messages": graph_result.get("messages", []),
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

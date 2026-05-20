@@ -14,6 +14,7 @@ from app.db.models import (
     SkillMastery, CalendarEvent
 )
 from app.core.config import settings
+from app.core.tracing import is_langsmith_enabled
 
 router = APIRouter()
 
@@ -46,7 +47,7 @@ async def get_system_health(db: Session = Depends(get_db)):
     health_status["services"]["llm"] = llm_status
     
     # Check LangSmith tracing
-    langsmith_status = "enabled" if settings.LANGSMITH_TRACING and settings.LANGSMITH_API_KEY else "disabled"
+    langsmith_status = "enabled" if is_langsmith_enabled() else "disabled"
     health_status["services"]["langsmith"] = langsmith_status
     
     return health_status
@@ -171,7 +172,7 @@ async def get_performance_metrics(
             for row in attempts
         ],
         "average_evaluation_score": float(avg_score),
-        "langsmith_tracing": "enabled" if settings.LANGSMITH_TRACING else "disabled"
+        "langsmith_tracing": "enabled" if is_langsmith_enabled() else "disabled"
     }
 
 
@@ -184,12 +185,22 @@ async def get_trace_info():
         Information about LangSmith tracing configuration.
     """
     return {
-        "langsmith_enabled": settings.LANGSMITH_TRACING and bool(settings.LANGSMITH_API_KEY),
+        "langsmith_enabled": is_langsmith_enabled(),
         "langsmith_project": settings.LANGSMITH_PROJECT,
         "langsmith_endpoint": "https://api.smith.langchain.com",
+        "graph_run_names": [
+            "onboarding",
+            "gap_analysis",
+            "plan_generation",
+            "daily_briefing",
+            "practice_generation",
+            "learning_loop",
+            "adaptive_planning",
+        ],
         "instructions": {
-            "setup": "Set LANGSMITH_API_KEY and LANGSMITH_TRACING=true in .env",
-            "view_traces": f"Visit https://smith.langchain.com and select project '{settings.LANGSMITH_PROJECT}'"
-        }
+            "setup": "Copy backend/.env.example to backend/.env and set LANGSMITH_API_KEY + LANGSMITH_TRACING=true",
+            "view_traces": f"Visit https://smith.langchain.com and select project '{settings.LANGSMITH_PROJECT}'",
+            "filter_tip": "Filter traces by tag 'irc-coach' or run name e.g. 'onboarding'",
+        },
     }
 

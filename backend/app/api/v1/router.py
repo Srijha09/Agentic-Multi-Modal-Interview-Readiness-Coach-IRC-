@@ -2,7 +2,19 @@
 Main API router for v1 endpoints.
 """
 from fastapi import APIRouter
-from app.api.v1.endpoints import health, documents, plans, practice, gaps, coach, mastery, adaptive, calendar, observability
+from app.api.v1.endpoints import (
+    health,
+    documents,
+    plans,
+    practice,
+    gaps,
+    coach,
+    mastery,
+    adaptive,
+    calendar,
+    observability,
+    graph,
+)
 
 api_router = APIRouter()
 
@@ -17,6 +29,7 @@ api_router.include_router(mastery.router, prefix="/mastery", tags=["mastery"])
 api_router.include_router(adaptive.router, prefix="/adaptive", tags=["adaptive"])
 api_router.include_router(calendar.router, prefix="/calendar", tags=["calendar"])
 api_router.include_router(observability.router, prefix="/observability", tags=["observability"])
+api_router.include_router(graph.router, prefix="/graph", tags=["langgraph"])
 
 
 

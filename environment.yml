@@ -17,14 +17,16 @@ dependencies:
     - alembic==1.12.1
     - psycopg2-binary==2.9.9
     
-    # LangChain & LangGraph
-    - langchain==0.1.0
-    - langchain-openai==0.0.2
-    - langchain-anthropic==0.1.0
-    - langgraph==0.0.20
+    # LangChain & LangGraph (pinned compatible set)
+    - langchain-core==0.3.86
+    - langchain==0.3.30
+    - langchain-openai==0.3.35
+    - langchain-anthropic==0.3.22
+    - langgraph==0.2.76
+    - langsmith>=0.1.0
     
     # Vector stores
-    - faiss-cpu==1.7.4
+    - faiss-cpu==1.13.2
     - chromadb==0.4.18
     
     # Document processing
@@ -33,8 +35,8 @@ dependencies:
     - unstructured==0.11.6
     
     # Utilities
-    - pydantic==2.5.2
-    - pydantic-settings==2.1.0
+    - pydantic==2.10.6
+    - pydantic-settings==2.6.1
     - email-validator==2.1.0
     - httpx==0.25.2
     - aiofiles==23.2.1

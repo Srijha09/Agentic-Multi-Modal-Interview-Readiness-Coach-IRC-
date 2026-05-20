@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.db.database import get_db
 from app.db.models import User, Gap, StudyPlan, Week
 from app.schemas.plan import StudyPlanResponse, StudyPlanCreate
-from app.services.planner import StudyPlanner
+from app.graph.runner import get_graph_runner
 from app.core.serializers import serialize_study_plan
 
 router = APIRouter()
@@ -51,19 +51,21 @@ async def generate_plan(
         StudyPlan.user_id == user_id
     ).order_by(StudyPlan.created_at.desc()).first()
     
-    # Generate new plan
-    planner = StudyPlanner()
-    study_plan = planner.generate_plan(
+    # Generate plan via LangGraph planner node
+    runner = get_graph_runner()
+    graph_result = runner.run_plan_generation(
+        db=db,
         user_id=user_id,
-        gaps=gaps,
-        interview_date=interview_date,
         weeks=weeks,
         hours_per_week=hours_per_week,
-        db_session=db
+        interview_date=interview_date,
     )
-    
-    db.commit()
-    db.refresh(study_plan)
+    if graph_result.get("error"):
+        raise HTTPException(status_code=500, detail=graph_result["error"])
+
+    study_plan = graph_result.get("study_plan")
+    if not study_plan:
+        raise HTTPException(status_code=500, detail="Plan generation did not return a study plan")
     
     # Serialize and return
     plan_dict = serialize_study_plan(study_plan, include_relations=True)

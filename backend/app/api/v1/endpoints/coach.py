@@ -17,6 +17,7 @@ from app.schemas.coach import (
     TaskRescheduleResponse,
     CarryOverSummary,
 )
+from app.graph.runner import get_graph_runner
 from app.services.daily_coach import DailyCoach
 
 logger = logging.getLogger(__name__)
@@ -43,14 +44,18 @@ async def get_daily_briefing(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        coach = DailyCoach()
-        briefing = coach.get_daily_briefing(
+        runner = get_graph_runner()
+        graph_result = runner.run_daily_briefing(
+            db=db,
             user_id=user_id,
             target_date=target_date,
             study_plan_id=study_plan_id,
-            db_session=db
         )
-        
+        if graph_result.get("error"):
+            raise HTTPException(status_code=500, detail=graph_result["error"])
+        briefing = graph_result.get("briefing")
+        if not briefing:
+            raise HTTPException(status_code=500, detail="Daily briefing not produced")
         return briefing
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
